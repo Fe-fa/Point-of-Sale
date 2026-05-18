@@ -75,13 +75,6 @@ export default function AdminInventoryPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Inventory</h2>
-          <p>Stock levels update here and automatically reduce after cashier payment finalizes a billing.</p>
-        </div>
-      </div>
-
       <div className="dashboard-grid two-wide">
         <article className="card">
           <div className="card-header"><div><h3>{editingId ? 'Update stock' : 'Add stock line'}</h3><p>Store ID: {storeId || '-'}</p></div></div>

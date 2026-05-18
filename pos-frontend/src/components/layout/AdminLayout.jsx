@@ -50,7 +50,7 @@ export default function AdminLayout() {
   const { theme, toggleTheme } = useTheme();
 
   const navItems = user?.role === 'admin' ? adminNavItems : managerNavItems;
-  const workspaceLabel = user?.role === 'admin' ? 'System admin workspace' : 'Store manager workspace';
+  const workspaceLabel = user?.role === 'admin' ? 'System admin' : 'Store manager';
 
   const handleLogout = async () => {
     await logout();
@@ -67,13 +67,6 @@ export default function AdminLayout() {
             <p>{workspaceLabel}</p>
           </div>
         </div>
-
-        <div className="sidebar-summary cardless-panel">
-          <div className="sidebar-kicker">Signed in as</div>
-          <strong>{user?.full_name}</strong>
-          <span>{user?.role === 'admin' ? 'Global access across all stores' : 'Access limited to assigned stores only'}</span>
-        </div>
-
         <nav className="nav-list">
           {navItems.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
@@ -90,8 +83,8 @@ export default function AdminLayout() {
             <h2>Welcome back, {user?.first_name}</h2>
             <p>
               {user?.role === 'admin'
-                ? 'Create stores, manage managers, and monitor performance across the platform.'
-                : 'Manage the selected store, assign cashiers, and monitor daily activity.'}
+                ? 'System admin'
+                : 'Store manager'}
             </p>
           </div>
 
@@ -118,14 +111,6 @@ export default function AdminLayout() {
         </header>
 
         <main className="page-content">
-          <section className="workspace-banner">
-            <div className="workspace-banner-text">
-              <span className="eyebrow">Current scope</span>
-              <h3>{activeStore?.store_name || (user?.role === 'admin' ? 'All stores ready' : 'Assigned stores only')}</h3>
-              <p>{user?.role === 'admin' ? 'Switch between stores and manage platform-wide data.' : 'Every admin page is limited to the selected assigned store.'}</p>
-            </div>
-            <div className="workspace-banner-icon"><Building2 size={26} /></div>
-          </section>
           <Outlet />
         </main>
       </section>

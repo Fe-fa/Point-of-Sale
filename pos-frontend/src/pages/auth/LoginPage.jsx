@@ -34,15 +34,9 @@ export default function LoginPage() {
           <div>
             <span className="eyebrow">SwiftPOS</span>
             <h1>Log in</h1>
-            <p>Access the right workspace for system admin, manager, or cashier.</p>
-          </div>
-
-          <div className="auth-note">
-            <strong>Role-aware access</strong>
-            <span>Cashiers without a store assignment are redirected to a waiting screen until a manager or system admin assigns them.</span>
+            <p>Welcome back!</p>
           </div>
         </div>
-
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
             Username

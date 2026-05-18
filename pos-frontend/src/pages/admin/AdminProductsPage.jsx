@@ -124,20 +124,14 @@ const handleEdit = (product) => {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Products</h2>
-          <p>Build the cashier catalog with prices, VAT, SKU, active status, and image URL.</p>
-        </div>
-
+      {/* <div className="section-header">
         <input
           className="text-input search-small"
           placeholder="Search product or SKU"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-      </div>
-
+      </div> */}
       <div className="dashboard-grid two-wide">
         <article className="card">
           <div className="card-header">

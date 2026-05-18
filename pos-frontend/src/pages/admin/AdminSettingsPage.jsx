@@ -46,13 +46,6 @@ export default function AdminSettingsPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Settings</h2>
-          <p>Manage spacious admin layout preferences, invoice defaults, and store-focused workflow options.</p>
-        </div>
-      </div>
-
       <div className="dashboard-grid two-wide">
         <article className="card info-panel">
           <div className="card-header">

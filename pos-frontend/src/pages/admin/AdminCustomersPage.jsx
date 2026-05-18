@@ -67,14 +67,9 @@ export default function AdminCustomersPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Customers</h2>
-          <p>Manage saved customers for billings, balances, and quick cashier lookup.</p>
-        </div>
+      {/* <div className="section-header">
         <input className="text-input search-small" placeholder="Search customer" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
+      </div> */}
       <div className="dashboard-grid two-wide">
         <article className="card">
           <div className="card-header"><div><h3>{editingId ? 'Edit customer' : 'New customer'}</h3></div></div>

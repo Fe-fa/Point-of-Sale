@@ -62,14 +62,9 @@ export default function AdminCategoriesPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Category management</h2>
-          <p>Create and organize categories for cashier filtering and product grouping.</p>
-        </div>
+      {/* <div className="section-header">
         <input className="text-input search-small" placeholder="Search category" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
+      </div> */}
       <div className="dashboard-grid two-wide">
         <article className="card">
           <div className="card-header"><div><h3>{editingId ? 'Edit category' : 'New category'}</h3></div></div>

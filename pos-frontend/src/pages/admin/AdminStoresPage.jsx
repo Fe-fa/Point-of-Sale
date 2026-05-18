@@ -105,12 +105,6 @@ export default function AdminStoresPage() {
   if (!canManageStores) {
     return (
       <section className="stack-lg">
-        <div className="section-header">
-          <div>
-            <h2>Stores</h2>
-            <p>Only the system admin can create or edit stores.</p>
-          </div>
-        </div>
         <article className="card info-panel">
           <div className="info-tile">
             <strong>Manager scope</strong>
@@ -123,13 +117,6 @@ export default function AdminStoresPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
-        <div>
-          <h2>Stores</h2>
-          <p>Create stores, update store contacts, and control which locations remain active.</p>
-        </div>
-      </div>
-
       <div className="dashboard-grid two-wide">
         <article className="card">
           <div className="card-header">

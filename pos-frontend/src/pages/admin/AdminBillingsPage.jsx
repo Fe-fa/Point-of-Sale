@@ -38,10 +38,6 @@ export default function AdminBillingsPage() {
   return (
     <section className="stack-lg">
       <div className="section-header">
-        <div>
-          <h2>Billings and prints</h2>
-          <p>Review completed and draft sales, then print invoice or receipt instantly.</p>
-        </div>
         <select className="select-input slim" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="draft">Draft</option>

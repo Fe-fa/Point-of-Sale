@@ -38,7 +38,6 @@ export default function RegisterPage() {
       setSubmitting(false);
     }
   };
-
   return (
     <div className="auth-shell">
       <div className="auth-card auth-card-wide">
@@ -46,12 +45,7 @@ export default function RegisterPage() {
           <div>
             <span className="eyebrow">SwiftPOS</span>
             <h1>Create cashier account</h1>
-            <p>Self-registration creates a cashier profile. Store access starts only after assignment.</p>
-          </div>
-
-          <div className="auth-note warning">
-            <strong>Pending assignment</strong>
-            <span>New cashier accounts cannot use the POS until a manager or system admin links them to one or more stores.</span>
+            <p>Welcome back!</p>
           </div>
         </div>
 
