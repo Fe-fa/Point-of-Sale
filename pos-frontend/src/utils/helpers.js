@@ -75,3 +75,13 @@ export function getUserHomePath(user) {
   }
   return '/admin/dashboard';
 }
+const openCreateModal = () => {
+  resetForm();
+  setShowModal(true);
+};
+
+const closeModal = () => {
+  setShowModal(false);
+  resetForm();
+};
+

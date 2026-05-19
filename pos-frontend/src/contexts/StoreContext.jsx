@@ -6,76 +6,107 @@ import { useAuth } from './AuthContext';
 
 const StoreContext = createContext(null);
 
+const extractStores = (response) => {
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response)) return response;
+  return [];
+};
+
+const pickPreferredStore = (stores, persistedStoreId, defaultStoreId) => {
+  const candidates = [
+    String(persistedStoreId || ''),
+    String(defaultStoreId || ''),
+    String(stores?.[0]?.store_id || ''),
+  ].filter(Boolean);
+
+  const matched = candidates.find((candidate) =>
+    stores.some((store) => String(store.store_id) === String(candidate))
+  );
+
+  return matched || '';
+};
+
 export function StoreProvider({ children }) {
   const { user } = useAuth();
-  const [storeId, setStoreId] = useState(localStorage.getItem(storageKeys.storeId) || '');
+  const [storeId, setStoreIdState] = useState(localStorage.getItem(storageKeys.storeId) || '');
   const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  const syncStoreId = (nextValue) => {
+    const normalized = String(nextValue || '');
+    setStoreIdState(normalized);
+
+    if (normalized) localStorage.setItem(storageKeys.storeId, normalized);
+    else localStorage.removeItem(storageKeys.storeId);
+  };
 
   useEffect(() => {
     async function resolveStores() {
       if (!user) {
-        setStoreId('');
         setStores([]);
-        localStorage.removeItem(storageKeys.storeId);
+        syncStoreId('');
         return;
       }
 
-      const embeddedStores = normalizeStores(user);
+      const embeddedStores = normalizeStores(user) || [];
 
       if (user.role === 'admin') {
         setLoading(true);
         try {
           const response = await storeService.list({ per_page: 200 });
-          const apiStores = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : [];
+          const apiStores = extractStores(response);
           const nextStores = apiStores.length ? apiStores : embeddedStores;
+
           setStores(nextStores);
 
-          const preferred = String(localStorage.getItem(storageKeys.storeId) || user.default_store_id || nextStores[0]?.store_id || '');
-          setStoreId(preferred);
-          if (preferred) localStorage.setItem(storageKeys.storeId, preferred);
-          else localStorage.removeItem(storageKeys.storeId);
+          const preferred = pickPreferredStore(
+            nextStores,
+            localStorage.getItem(storageKeys.storeId),
+            user.default_store_id
+          );
+          syncStoreId(preferred);
         } catch {
           setStores(embeddedStores);
-          const preferred = String(localStorage.getItem(storageKeys.storeId) || user.default_store_id || embeddedStores[0]?.store_id || '');
-          setStoreId(preferred);
-          if (preferred) localStorage.setItem(storageKeys.storeId, preferred);
-          else localStorage.removeItem(storageKeys.storeId);
+          const preferred = pickPreferredStore(
+            embeddedStores,
+            localStorage.getItem(storageKeys.storeId),
+            user.default_store_id
+          );
+          syncStoreId(preferred);
         } finally {
           setLoading(false);
         }
         return;
       }
 
-      setStores(embeddedStores);
-      const hasSelectedAccessibleStore = embeddedStores.some((store) => String(store.store_id) === String(storeId));
-      const preferred = String(
-        hasSelectedAccessibleStore
-          ? storeId
-          : user.default_store_id || embeddedStores[0]?.store_id || ''
+      const nextStores = embeddedStores;
+      setStores(nextStores);
+
+      const preferred = pickPreferredStore(
+        nextStores,
+        storeId,
+        user.default_store_id
       );
-      setStoreId(preferred);
-      if (preferred) localStorage.setItem(storageKeys.storeId, preferred);
-      else localStorage.removeItem(storageKeys.storeId);
+      syncStoreId(preferred);
     }
 
     resolveStores();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const updateStoreId = (value) => {
-    const next = String(value || '');
-    setStoreId(next);
-    if (next) localStorage.setItem(storageKeys.storeId, next);
-    else localStorage.removeItem(storageKeys.storeId);
-  };
+  const value = useMemo(() => {
+    const activeStore =
+      stores.find((store) => String(store.store_id) === String(storeId)) || null;
 
-  const value = useMemo(() => ({
-    storeId,
-    setStoreId: updateStoreId,
-    stores,
-    loading,
-    activeStore: stores.find((store) => String(store.store_id) === String(storeId)) || null,
-  }), [loading, storeId, stores]);
+    return {
+      storeId,
+      setStoreId: syncStoreId,
+      stores,
+      loading,
+      activeStore,
+    };
+  }, [storeId, stores, loading]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

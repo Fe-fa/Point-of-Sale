@@ -1,9 +1,8 @@
+import { X, Plus } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import Modal from '../../components/common/Modal';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStore } from '../../contexts/StoreContext';
 import { userService } from '../../services/userService';
-import { extractList } from '../../utils/helpers';
 
 const initialForm = {
   first_name: '',
@@ -18,10 +17,21 @@ const initialForm = {
   store_ids: [],
 };
 
+const extractList = (response) => {
+  if (Array.isArray(response?.data?.data)) return response.data.data;
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response)) return response;
+  return [];
+};
+
 function normalizeUser(user) {
   return {
     ...user,
     stores: Array.isArray(user?.stores) ? user.stores : [],
+    full_name:
+      user?.full_name ||
+      [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+      user?.username,
   };
 }
 
@@ -40,16 +50,25 @@ export default function AdminUsersPage() {
   const [assigningUser, setAssigningUser] = useState(null);
   const [form, setForm] = useState(initialForm);
   const [assignStoreIds, setAssignStoreIds] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+
   const isAdmin = user?.role === 'admin';
+
   const selectableStores = useMemo(() => {
     if (isAdmin) return stores;
     return activeStore ? [activeStore] : stores;
   }, [activeStore, isAdmin, stores]);
 
+  const summary = useMemo(() => ({
+    managers: rows.filter((row) => row.role === 'manager').length,
+    cashiers: rows.filter((row) => row.role === 'cashier').length,
+    admins: rows.filter((row) => row.role === 'admin').length,
+    unassigned: rows.filter((row) => row.role !== 'admin' && !(row.stores || []).length).length,
+  }), [rows]);
+
   const load = async () => {
     setLoading(true);
     setError('');
-
     try {
       const params = { per_page: 200 };
       if (roleFilter !== 'all') params.role = roleFilter;
@@ -68,6 +87,22 @@ export default function AdminUsersPage() {
   useEffect(() => {
     load();
   }, [roleFilter, assignmentFilter, activeStore?.store_id]);
+
+  const closeFormModal = () => {
+    if (submitting) return;
+    setOpenForm(false);
+    setEditingUser(null);
+    setForm(initialForm);
+    setError('');
+  };
+
+  const closeAssignModal = () => {
+    if (submitting) return;
+    setOpenAssign(false);
+    setAssigningUser(null);
+    setAssignStoreIds([]);
+    setError('');
+  };
 
   const openCreateModal = () => {
     setEditingUser(null);
@@ -108,40 +143,38 @@ export default function AdminUsersPage() {
     setError('');
   };
 
-  const handleStoreToggle = (storeId) => {
+  const handleStoreToggle = (targetStoreId) => {
     setForm((current) => ({
       ...current,
-      store_ids: current.store_ids.includes(storeId)
-        ? current.store_ids.filter((value) => value !== storeId)
-        : [...current.store_ids, storeId],
+      store_ids: current.store_ids.includes(targetStoreId)
+        ? current.store_ids.filter((value) => value !== targetStoreId)
+        : [...current.store_ids, targetStoreId],
     }));
   };
 
-  const handleAssignStoreToggle = (storeId) => {
-    setAssignStoreIds((current) => (
-      current.includes(storeId)
-        ? current.filter((value) => value !== storeId)
-        : [...current, storeId]
-    ));
+  const handleAssignStoreToggle = (targetStoreId) => {
+    setAssignStoreIds((current) =>
+      current.includes(targetStoreId)
+        ? current.filter((value) => value !== targetStoreId)
+        : [...current, targetStoreId]
+    );
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setMessage('');
-
+    setSubmitting(true);
     try {
       const payload = {
         ...form,
         store_ids: form.role === 'admin' ? [] : form.store_ids.map(Number),
         default_store_id: form.role === 'admin' ? null : Number(form.store_ids[0] || '') || null,
       };
-
       if (editingUser && !payload.password) {
         delete payload.password;
         delete payload.password_confirmation;
       }
-
       if (!isAdmin) {
         payload.role = 'cashier';
         payload.store_ids = activeStore ? [Number(activeStore.store_id)] : [];
@@ -149,26 +182,30 @@ export default function AdminUsersPage() {
       }
 
       let response;
-      if (editingUser) {
-        response = await userService.update(editingUser.user_id, payload);
-      } else {
-        response = await userService.create(payload);
-      }
+      if (editingUser) response = await userService.update(editingUser.user_id, payload);
+      else response = await userService.create(payload);
 
-      const targetUserId = response?.user?.user_id || response?.data?.user_id || editingUser?.user_id;
+      const targetUserId =
+        response?.data?.user_id ||
+        response?.data?.data?.user_id ||
+        response?.user?.user_id ||
+        editingUser?.user_id;
+
       if (targetUserId && payload.role !== 'admin') {
         await userService.syncStores(targetUserId, payload.store_ids || []);
       }
 
       setOpenForm(false);
-      setMessage(editingUser ? 'User updated successfully.' : 'User created successfully.');
-      setForm(initialForm);
       setEditingUser(null);
-      load();
+      setForm(initialForm);
+      setMessage(editingUser ? 'User updated successfully.' : 'User created successfully.');
+      await load();
     } catch (err) {
       const errors = err?.response?.data?.errors;
       const firstError = errors ? Object.values(errors)[0]?.[0] : null;
       setError(firstError || err?.response?.data?.message || 'Unable to save user.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -176,205 +213,315 @@ export default function AdminUsersPage() {
     event.preventDefault();
     setError('');
     setMessage('');
-
+    setSubmitting(true);
     try {
       await userService.syncStores(assigningUser.user_id, assignStoreIds.map(Number));
       setOpenAssign(false);
-      setMessage('Store assignment updated successfully.');
       setAssigningUser(null);
-      load();
+      setAssignStoreIds([]);
+      setMessage('Store assignment updated successfully.');
+      await load();
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to update store assignment.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDeactivate = async (row) => {
     if (!window.confirm(`Deactivate ${row.full_name || row.username}?`)) return;
-
     try {
       await userService.remove(row.user_id);
       setMessage('User updated successfully.');
-      load();
+      await load();
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to update user.');
     }
   };
 
   return (
-    <section className="stack-lg">
-      <div className="section-header split-header">
-        <div>
-          <h2>{isAdmin ? 'Users & access' : 'Cashier assignments'}</h2>
-          <p>
-            {isAdmin
-              ? 'Create managers, register cashiers, and assign each person to the right stores.'
-              : 'Manage cashiers inside your assigned store and approve pending access.'}
-          </p>
+    <>
+      <section className="stack-lg">
+        <div className="metrics-grid">
+          {isAdmin ? (
+            <>
+              <article className="metric-card"><p>Managers</p><h3>{summary.managers}</h3></article>
+              <article className="metric-card"><p>Cashiers</p><h3>{summary.cashiers}</h3></article>
+              <article className="metric-card"><p>Admins</p><h3>{summary.admins}</h3></article>
+              <article className="metric-card"><p>Unassigned</p><h3>{summary.unassigned}</h3></article>
+            </>
+          ) : (
+            <>
+              <article className="metric-card"><p>Cashiers</p><h3>{summary.cashiers}</h3></article>
+              <article className="metric-card"><p>Unassigned</p><h3>{summary.unassigned}</h3></article>
+              <article className="metric-card"><p>Store</p><h3>{activeStore?.store_name || '—'}</h3></article>
+              <article className="metric-card"><p>Status</p><h3>Managed</h3></article>
+            </>
+          )}
         </div>
 
-        <div className="row-actions">
-          <select className="select-input slim" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-            <option value="all">All roles</option>
-            {isAdmin ? <option value="manager">Managers</option> : null}
-            <option value="cashier">Cashiers</option>
-          </select>
-          <select className="select-input slim" value={assignmentFilter} onChange={(e) => setAssignmentFilter(e.target.value)}>
-            <option value="all">All assignments</option>
-            <option value="assigned">Assigned</option>
-            <option value="unassigned">Unassigned</option>
-          </select>
-          <button className="primary-button" onClick={openCreateModal}>
-            {isAdmin ? 'New user' : 'New cashier'}
-          </button>
-        </div>
-      </div>
-
-      {error ? <p className="form-error">{error}</p> : null}
-      {message ? <p className="form-success">{message}</p> : null}
-
-      <article className="card">
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Stores</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan="5">Loading...</td></tr>
-              ) : rows.length ? rows.map((row) => (
-                <tr key={row.user_id}>
-                  <td>
-                    <strong>{row.full_name || `${row.first_name || ''} ${row.last_name || ''}`.trim() || row.username}</strong>
-                    <div className="muted">{row.email || row.username}</div>
-                  </td>
-                  <td><span className="badge">{row.role}</span></td>
-                  <td>
-                    {(row.stores || []).length
-                      ? row.stores.map((store) => store.store_name).join(', ')
-                      : 'Pending assignment'}
-                  </td>
-                  <td><span className={`badge ${row.is_active ? 'success' : 'danger'}`}>{row.is_active ? 'Active' : 'Inactive'}</span></td>
-                  <td>
-                    <div className="row-actions compact">
-                      <button className="ghost-button" onClick={() => openEditModal(row)}>Edit</button>
-                      {row.role !== 'admin' ? <button className="ghost-button" onClick={() => openAssignModal(row)}>Assign stores</button> : null}
-                      {row.role !== 'admin' ? <button className="ghost-button danger" onClick={() => handleDeactivate(row)}>Deactivate</button> : null}
-                    </div>
-                  </td>
-                </tr>
-              )) : (
-                <tr><td colSpan="5">No users found.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </article>
-
-      <Modal open={openForm} title={editingUser ? 'Edit user' : isAdmin ? 'Create user' : 'Create cashier'} onClose={() => setOpenForm(false)} width="820px">
-        <form className="form-grid two-columns" onSubmit={handleSubmit}>
-          <label>
-            First name
-            <input className="text-input" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} required />
-          </label>
-          <label>
-            Last name
-            <input className="text-input" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} required />
-          </label>
-          <label>
-            Username
-            <input className="text-input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
-          </label>
-          <label>
-            Email
-            <input className="text-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-          </label>
-          <label>
-            Phone
-            <input className="text-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          </label>
-          <label>
-            Role
-            <select className="select-input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value, store_ids: e.target.value === 'admin' ? [] : form.store_ids })} disabled={!isAdmin}>
-              {isAdmin ? <option value="manager">Manager</option> : null}
-              <option value="cashier">Cashier</option>
-              {isAdmin ? <option value="admin">Admin</option> : null}
-            </select>
-          </label>
-          <label>
-            Password
-            <input className="text-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editingUser ? 'Leave blank to keep current password' : ''} required={!editingUser} />
-          </label>
-          <label>
-            Confirm password
-            <input className="text-input" type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} required={!editingUser || !!form.password} />
-          </label>
-
-          {form.role !== 'admin' ? (
-            <div className="span-2 stack-md">
-              <strong>Store assignment</strong>
-              <div className="selection-grid">
-                {selectableStores.map((store) => {
-                  const storeId = String(store.store_id);
-                  const checked = form.store_ids.includes(storeId);
-                  return (
-                    <label key={storeId} className="selection-card">
-                      <input type="checkbox" checked={checked} onChange={() => handleStoreToggle(storeId)} />
-                      <div>
-                        <strong>{store.store_name}</strong>
-                        <span>{store.location || store.currency}</span>
-                      </div>
-                    </label>
-                  );
-                })}
-                {!selectableStores.length ? <p className="muted">No stores available for assignment yet.</p> : null}
-              </div>
-            </div>
-          ) : null}
-
-          <label className="checkbox-row span-2">
-            <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
-            <span>User is active</span>
-          </label>
-
-          {error ? <p className="form-error span-2">{error}</p> : null}
-
-          <div className="row-actions span-2">
-            <button className="primary-button">{editingUser ? 'Save changes' : 'Create user'}</button>
-            <button type="button" className="ghost-button" onClick={() => setOpenForm(false)}>Cancel</button>
-          </div>
-        </form>
-      </Modal>
-
-      <Modal open={openAssign} title={`Assign stores${assigningUser ? ` - ${assigningUser.full_name || assigningUser.username}` : ''}`} onClose={() => setOpenAssign(false)} width="720px">
-        <form className="stack-md" onSubmit={handleAssignSubmit}>
-          <div className="selection-grid">
-            {selectableStores.map((store) => {
-              const storeId = String(store.store_id);
-              const checked = assignStoreIds.includes(storeId);
-              return (
-                <label key={storeId} className="selection-card">
-                  <input type="checkbox" checked={checked} onChange={() => handleAssignStoreToggle(storeId)} />
-                  <div>
-                    <strong>{store.store_name}</strong>
-                    <span>{store.location || store.currency}</span>
-                  </div>
-                </label>
-              );
-            })}
+        <div className="section-header split-header">
+          <div>
+            <h2>{isAdmin ? 'Users & access' : 'Cashier assignments'}</h2>
+            <p>
+              {isAdmin
+                ? 'Filter by role and assignment to keep the workspace organised.'
+                : 'Create and assign cashiers inside your selected store.'}
+            </p>
           </div>
 
           <div className="row-actions">
-            <button className="primary-button">Save assignment</button>
-            <button type="button" className="ghost-button" onClick={() => setOpenAssign(false)}>Cancel</button>
+            <select className="select-input slim" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+              <option value="all">All roles</option>
+              {isAdmin ? <option value="manager">Managers</option> : null}
+              <option value="cashier">Cashiers</option>
+              {isAdmin ? <option value="admin">Admins</option> : null}
+            </select>
+
+            <select className="select-input slim" value={assignmentFilter} onChange={(e) => setAssignmentFilter(e.target.value)}>
+              <option value="all">All assignments</option>
+              <option value="assigned">Assigned</option>
+              <option value="unassigned">Unassigned</option>
+            </select>
+
+            <button 
+              type="button"
+              className="primary-button" 
+              onClick={openCreateModal}
+              disabled={submitting}
+              title={isAdmin ? "Add a new user" : "Add a new cashier"}
+              aria-label={isAdmin ? "Create new user" : "Create new cashier"}
+              aria-busy={submitting}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                opacity: submitting ? 0.6 : 1,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <Plus size={18} />
+              {submitting ? 'Creating...' : (isAdmin ? 'New user' : 'New cashier')}
+            </button>
           </div>
-        </form>
-      </Modal>
-    </section>
+        </div>
+
+        {error && !openForm && !openAssign ? <p className="form-error">{error}</p> : null}
+        {message ? <p className="form-success">{message}</p> : null}
+
+        <article className="card">
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Stores</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan="5">Loading...</td></tr>
+                ) : rows.length ? (
+                  rows.map((row) => (
+                    <tr key={row.user_id}>
+                      <td>
+                        <strong>{row.full_name}</strong>
+                        <div className="muted">{row.email || row.username}</div>
+                      </td>
+                      <td><span className="badge">{row.role}</span></td>
+                      <td>
+                        {(row.stores || []).length
+                          ? row.stores.map((store) => store.store_name).join(', ')
+                          : 'Pending assignment'}
+                      </td>
+                      <td>
+                        <span className={`badge ${row.is_active ? 'success' : 'danger'}`}>
+                          {row.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="row-actions compact">
+                          <button className="ghost-button" onClick={() => openEditModal(row)}>Edit</button>
+                          {row.role !== 'admin' ? (
+                            <button className="ghost-button" onClick={() => openAssignModal(row)}>Assign stores</button>
+                          ) : null}
+                          {row.role !== 'admin' ? (
+                            <button className="ghost-button danger" onClick={() => handleDeactivate(row)}>Deactivate</button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr><td colSpan="5">No users found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      {/* USER FORM MODAL */}
+      {openForm ? (
+        <div className="modal-backdrop" onClick={closeFormModal}>
+          <div className="modal-card form-modal-card form-modal-card-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>{editingUser ? 'Edit user' : isAdmin ? 'Create user' : 'Create cashier'}</h3>
+                <p className="muted">Manage account details, role, password, and store access.</p>
+              </div>
+              <button type="button" className="icon-button" onClick={closeFormModal} disabled={submitting}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-content">
+              <form className="catalog-form-grid" onSubmit={handleSubmit}>
+                <label>
+                  First name
+                  <input className="text-input" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} required />
+                </label>
+                <label>
+                  Last name
+                  <input className="text-input" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} required />
+                </label>
+                <label>
+                  Username
+                  <input className="text-input" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required />
+                </label>
+                <label>
+                  Email
+                  <input className="text-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+                </label>
+                <label>
+                  Phone
+                  <input className="text-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                </label>
+                <label>
+                  Role
+                  <select
+                    className="select-input"
+                    value={form.role}
+                    onChange={(e) => setForm({ ...form, role: e.target.value, store_ids: e.target.value === 'admin' ? [] : form.store_ids })}
+                    disabled={!isAdmin}
+                  >
+                    {isAdmin ? <option value="manager">Manager</option> : null}
+                    <option value="cashier">Cashier</option>
+                    {isAdmin ? <option value="admin">Admin</option> : null}
+                  </select>
+                </label>
+                <label>
+                  Password
+                  <input
+                    className="text-input"
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder={editingUser ? 'Leave blank to keep current password' : ''}
+                    required={!editingUser}
+                  />
+                </label>
+                <label>
+                  Confirm password
+                  <input
+                    className="text-input"
+                    type="password"
+                    value={form.password_confirmation}
+                    onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })}
+                    required={!editingUser || !!form.password}
+                  />
+                </label>
+
+                {form.role !== 'admin' ? (
+                  <div className="span-2 stack-md">
+                    <strong>Store assignment</strong>
+                    <div className="selection-grid">
+                      {selectableStores.map((store) => {
+                        const id = String(store.store_id);
+                        const checked = form.store_ids.includes(id);
+                        return (
+                          <label key={id} className="selection-card">
+                            <input type="checkbox" checked={checked} onChange={() => handleStoreToggle(id)} />
+                            <div>
+                              <strong>{store.store_name}</strong>
+                              <span>{store.location || store.currency}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                      {!selectableStores.length ? (
+                        <p className="muted">No stores available for assignment yet.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                <label className="checkbox-row span-2 catalog-check">
+                  <input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} />
+                  <span>User is active</span>
+                </label>
+
+                {error ? <p className="form-error span-2">{error}</p> : null}
+
+                <div className="catalog-modal-actions span-2">
+                  <button type="button" className="ghost-button" onClick={closeFormModal} disabled={submitting}>Cancel</button>
+                  <button className="catalog-primary-btn" type="submit" disabled={submitting}>
+                    {editingUser ? 'Save changes' : 'Create user'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ASSIGN STORES MODAL */}
+      {openAssign ? (
+        <div className="modal-backdrop" onClick={closeAssignModal}>
+          <div className="modal-card form-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3>Assign stores</h3>
+                <p className="muted">
+                  {assigningUser ? assigningUser.full_name || assigningUser.username : ''} — select all stores this user can access.
+                </p>
+              </div>
+              <button type="button" className="icon-button" onClick={closeAssignModal} disabled={submitting}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-content">
+              <form className="stack-md" onSubmit={handleAssignSubmit}>
+                <div className="selection-grid">
+                  {selectableStores.map((store) => {
+                    const id = String(store.store_id);
+                    const checked = assignStoreIds.includes(id);
+                    return (
+                      <label key={id} className="selection-card">
+                        <input type="checkbox" checked={checked} onChange={() => handleAssignStoreToggle(id)} />
+                        <div>
+                          <strong>{store.store_name}</strong>
+                          <span>{store.location || store.currency}</span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {error ? <p className="form-error">{error}</p> : null}
+                <div className="catalog-modal-actions">
+                  <button type="button" className="ghost-button" onClick={closeAssignModal} disabled={submitting}>Cancel</button>
+                  <button className="catalog-primary-btn" disabled={submitting}>Save assignment</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

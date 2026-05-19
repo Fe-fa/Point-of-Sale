@@ -624,12 +624,18 @@ export default function CashierPosPage() {
     <>
       <section className="pos-grid cashier-pos-page">
         <div className="pos-catalog stack-lg">
-          <div className="card hero-card compact-hero">
-            <div>
-              <span className="eyebrow">Cashier</span>
-              <h2>{currentStore?.store_name || 'Fortune Supermarket'}</h2>
-              <p>Quality Service.</p>
-            </div>
+          <div className="card hero-card compact-hero">     
+<div>
+  <span className="eyebrow">Cashier</span>
+  <h2>{currentStore?.store_name || 'Fortune Supermarket'}</h2>
+  <p>{currentStore?.location || 'Store Location'}</p>
+  <p>{currentStore?.physical_address || 'Physical address not available'}</p>
+  <p>
+    {currentStore?.telephone || 'Telephone not available'}{' '}
+    {currentStore?.email_address ? `| ${currentStore.email_address}` : ''}
+  </p>
+</div>
+
           </div>
 
           <div className="toolbar-row pos-toolbar-wrap">
