@@ -21,6 +21,8 @@ import { productService } from '../../services/productService';
 import { currency, formatDateTime } from '../../utils/helpers';
 import { openBillingPrint } from '../../utils/print';
 
+const PRODUCTS_PER_PAGE = 12;
+
 const paymentMethods = [
   {
     key: 'cash',
@@ -67,6 +69,22 @@ const getItemTotal = (item) =>
       Number(item?.quantity || 0) * Number(item?.unit_price || 0)
   );
 
+const buildPagination = (currentPage, totalPages) => {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (currentPage <= 3) {
+    return [1, 2, 3, 4, '...', totalPages];
+  }
+
+  if (currentPage >= totalPages - 2) {
+    return [1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+
+  return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
+};
+
 export default function CashierPosPage() {
   const { user } = useAuth();
   const { stores, storeId, loading: storeLoading } = useStore();
@@ -80,6 +98,7 @@ export default function CashierPosPage() {
 
   const [activeCategory, setActiveCategory] = useState('all');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -128,6 +147,7 @@ export default function CashierPosPage() {
     resetPaymentState('');
     setShowPaymentModal(false);
   };
+
   const mergeDraftPreview = (billingRecord) => {
     if (!billingRecord?.billing_id) return;
 
@@ -213,9 +233,7 @@ export default function CashierPosPage() {
       const data = extractList(response);
 
       const filtered = (Array.isArray(data) ? data : []).filter(
-        (item) =>
-          String(item.store_id) === String(storeId) &&
-          isOwnedByCurrentCashier(item)
+        (item) => String(item.store_id) === String(storeId) && isOwnedByCurrentCashier(item)
       );
 
       setDrafts(filtered);
@@ -256,6 +274,7 @@ export default function CashierPosPage() {
     if (!storeId) return;
 
     resetSale();
+    setCurrentPage(1);
 
     const bootstrap = async () => {
       await Promise.allSettled([loadStaticData(), loadDrafts()]);
@@ -263,6 +282,10 @@ export default function CashierPosPage() {
 
     bootstrap();
   }, [storeId]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeCategory, search]);
 
   const ensureDraft = async () => {
     if (billing?.billing_id) return billing;
@@ -582,6 +605,27 @@ export default function CashierPosPage() {
     });
   }, [products, activeCategory, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
+  const visiblePages = useMemo(
+    () => buildPagination(currentPage, totalPages),
+    [currentPage, totalPages]
+  );
+
+  const startItem = filteredProducts.length === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const endItem = Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+
   const itemCount =
     billing?.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
 
@@ -624,18 +668,25 @@ export default function CashierPosPage() {
     <>
       <section className="pos-grid cashier-pos-page">
         <div className="pos-catalog stack-lg">
-          <div className="card hero-card compact-hero">     
-<div>
-  <span className="eyebrow">Cashier</span>
-  <h2>{currentStore?.store_name || 'Fortune Supermarket'}</h2>
-  <p>{currentStore?.location || 'Store Location'}</p>
-  <p>{currentStore?.physical_address || 'Physical address not available'}</p>
-  <p>
-    {currentStore?.telephone || 'Telephone not available'}{' '}
-    {currentStore?.email_address ? `| ${currentStore.email_address}` : ''}
-  </p>
-</div>
+          <div className="card hero-card compact-hero">
+            <div className="store-header-layout">
+              <div className="store-brand-identity">
+                <span className="eyebrow">Cashier</span>
+                <h2 className="store-title">{currentStore?.store_name || 'Fortune Supermarket'}</h2>
+              </div>
 
+              <div className="store-contact-meta">
+                <span className="meta-location">{currentStore?.location || 'Store Location'}</span>
+                <p className="meta-address">
+                  {currentStore?.physical_address || 'Physical address not available'}
+                </p>
+                <p className="meta-communication">
+                  {currentStore?.telephone || 'Telephone not available'}
+                  {currentStore?.email_address && <span className="meta-divider">|</span>}
+                  {currentStore?.email_address || ''}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="toolbar-row pos-toolbar-wrap">
@@ -680,7 +731,7 @@ export default function CashierPosPage() {
               {success ? <div className="form-success">{success}</div> : null}
 
               <div className="products-grid products-grid-enhanced">
-                {filteredProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   const image = getProductImage(product);
 
                   return (
@@ -715,7 +766,7 @@ export default function CashierPosPage() {
                             onClick={() => handlePayNow(product)}
                           >
                             <Wallet size={16} />
-                            Pay
+                            Pay Now
                           </button>
 
                           <button
@@ -739,6 +790,72 @@ export default function CashierPosPage() {
                   </div>
                 ) : null}
               </div>
+
+              {filteredProducts.length > 0 ? (
+                <div className="pagination-bar">
+                  <div className="pagination-summary">
+                    Showing <strong>{startItem}</strong> - <strong>{endItem}</strong> of{' '}
+                    <strong>{filteredProducts.length}</strong> products
+                  </div>
+
+                  <div className="pagination-controls">
+                    <button
+                      type="button"
+                      className="ghost-button pagination-btn"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      First
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ghost-button pagination-btn"
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </button>
+
+                    <div className="pagination-pages">
+                      {visiblePages.map((page, index) =>
+                        page === '...' ? (
+                          <span key={`ellipsis-${index}`} className="pagination-ellipsis">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={page}
+                            type="button"
+                            className={`pagination-page-btn ${currentPage === page ? 'active' : ''}`}
+                            onClick={() => setCurrentPage(page)}
+                          >
+                            {page}
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="ghost-button pagination-btn"
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </button>
+
+                    <button
+                      type="button"
+                      className="ghost-button pagination-btn"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                    >
+                      Last
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </>
           )}
         </div>
@@ -773,10 +890,8 @@ export default function CashierPosPage() {
                 <FolderClock size={16} />
                 Drafts ({drafts.length})
               </button>
-
               {draftsLoading ? <span className="muted inline-note">Refreshing drafts...</span> : null}
             </div>
-
             <div className="form-grid">
               <label>
                 Customer
@@ -793,16 +908,6 @@ export default function CashierPosPage() {
                   ))}
                 </select>
               </label>
-              {/* <label>
-                Notes 
-                <textarea
-                  className="text-input textarea-input"
-                  rows="3"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional note for this bill or draft..."
-                />
-              </label> */}
             </div>
           </div>
 
@@ -863,12 +968,12 @@ export default function CashierPosPage() {
             </div>
 
             <div className="billing-summary-grid">
-                <div className="summary-box accent">
+              <div className="summary-box accent">
                 <span>Total</span>
                 <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
               </div>
               <div className="summary-box">
-                <span>VAT</span>
+                <span>VAT(16%)</span>
                 <strong>{currency(billing?.vat_amount || 0, currentStore?.currency)}</strong>
               </div>
 
@@ -876,7 +981,7 @@ export default function CashierPosPage() {
                 <span>Paid</span>
                 <strong>{currency(billing?.paid_amount || 0, currentStore?.currency)}</strong>
               </div>
-               <div className="summary-box">
+              <div className="summary-box">
                 <span>Subtotal</span>
                 <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
               </div>

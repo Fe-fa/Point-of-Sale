@@ -34,9 +34,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('products', ProductController::class);
+
+    Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
     Route::apiResource('inventory', InventoryController::class)->parameters([
         'inventory' => 'inventory',
     ]);
+
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('billings', BillingController::class);
     Route::apiResource('billing-items', BillingItemController::class);

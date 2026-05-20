@@ -40,7 +40,6 @@ export function StoreProvider({ children }) {
     if (normalized) localStorage.setItem(storageKeys.storeId, normalized);
     else localStorage.removeItem(storageKeys.storeId);
   };
-
   useEffect(() => {
     async function resolveStores() {
       if (!user) {
@@ -48,7 +47,6 @@ export function StoreProvider({ children }) {
         syncStoreId('');
         return;
       }
-
       const embeddedStores = normalizeStores(user) || [];
 
       if (user.role === 'admin') {
@@ -79,7 +77,6 @@ export function StoreProvider({ children }) {
         }
         return;
       }
-
       const nextStores = embeddedStores;
       setStores(nextStores);
 
@@ -92,13 +89,10 @@ export function StoreProvider({ children }) {
     }
 
     resolveStores();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
-
   const value = useMemo(() => {
     const activeStore =
       stores.find((store) => String(store.store_id) === String(storeId)) || null;
-
     return {
       storeId,
       setStoreId: syncStoreId,
@@ -107,7 +101,7 @@ export function StoreProvider({ children }) {
       activeStore,
     };
   }, [storeId, stores, loading]);
-
+  
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 

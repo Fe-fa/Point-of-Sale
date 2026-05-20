@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Inventory extends Model
 {
@@ -17,12 +18,13 @@ class Inventory extends Model
         'uuid',
         'store_id',
         'product_id',
+        'batch_no',
         'quantity',
         'reorder_level',
     ];
 
     protected $casts = [
-        'quantity' => 'integer',
+        'quantity'      => 'integer',
         'reorder_level' => 'integer',
     ];
 
@@ -34,5 +36,10 @@ class Inventory extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class, 'product_id', 'product_id');
+    }
+
+    public function histories(): HasMany
+    {
+        return $this->hasMany(InventoryHistory::class, 'inventory_id', 'inventory_id');
     }
 }

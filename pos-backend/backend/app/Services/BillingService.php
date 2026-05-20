@@ -27,7 +27,6 @@ class BillingService
             ->unique()
             ->values();
     }
-
     private function scopeAccessible(Builder $query, User $user): Builder
     {
         if ($user->isAdmin() || $user->isManager()) {
@@ -106,7 +105,7 @@ class BillingService
             'customer_id' => $data['customer_id'] ?? null,
             'user_id' => $user->user_id,
             'invnumber' => null,
-            'status' => 'draft',
+            'status' => 'unpaid',
             'subtotal' => 0,
             'vat_amount' => 0,
             'total' => 0,

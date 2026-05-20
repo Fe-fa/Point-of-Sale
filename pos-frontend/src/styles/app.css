@@ -250,6 +250,86 @@ img {
   font-weight: 800;
 }
 
+.card.hero-card.compact-hero {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.75rem 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02), 0 1px 3px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.store-header-layout {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  width: 100%;
+}
+
+.store-brand-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.store-brand-identity .eyebrow {
+  display: inline-block;
+  color: var(--primary, #5046e5);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 800;
+  margin: 0;
+}
+
+.store-brand-identity .store-title {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #111827;
+  letter-spacing: -0.02em;
+}
+
+.store-contact-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 0.2rem;
+}
+
+.store-contact-meta .meta-location {
+  font-weight: 600;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.store-contact-meta .meta-address,
+.store-contact-meta .meta-communication {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.store-contact-meta .meta-divider {
+  margin: 0 0.5rem;
+  color: #d1d5db;
+}
+
+@media (max-width: 640px) {
+  .store-header-layout {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.25rem;
+  }
+
+  .store-contact-meta {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
 .workspace-banner {
   display: flex;
   justify-content: space-between;
@@ -910,7 +990,7 @@ textarea:focus {
 }
 
 /* ============================================
-   TABLES — KEEPING YOUR STYLE
+   TABLES
    ============================================ */
 
 .catalog-table-card {
@@ -1453,6 +1533,101 @@ textarea:focus {
 
 .product-add-button:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* ============================================
+   PRODUCT PAGINATION
+   ============================================ */
+
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.pagination-summary {
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.pagination-summary strong {
+  color: var(--text);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 92px;
+  justify-content: center;
+}
+
+.pagination-page-btn {
+  min-width: 42px;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #dcdfe3;
+  background: #ffffff;
+  color: #4f5660;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-page-btn:hover {
+  background: #f3f5f7;
+  border-color: #bcbfc4;
+  color: #1a1d20;
+  transform: translateY(-1px);
+}
+
+.pagination-page-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+  box-shadow: 0 10px 20px rgba(109, 99, 216, 0.18);
+}
+
+.pagination-page-btn:disabled,
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.pagination-ellipsis {
+  min-width: 28px;
+  text-align: center;
+  color: var(--muted);
+  font-weight: 700;
+  user-select: none;
+}
+
+.pagination-mobile-stack {
+  width: 100%;
 }
 
 /* ============================================
@@ -2013,6 +2188,15 @@ textarea:focus {
   .info-grid {
     grid-template-columns: 1fr;
   }
+
+  .pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-controls {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2107,6 +2291,21 @@ textarea:focus {
   .catalog-preview {
     grid-template-columns: 1fr;
   }
+
+  .pagination-controls {
+    width: 100%;
+    display: grid;
+    gap: 10px;
+  }
+
+  .pagination-pages {
+    width: 100%;
+  }
+
+  .pagination-btn {
+    min-width: unset;
+    flex: 1 1 calc(50% - 8px);
+  }
 }
 
 @media (max-width: 540px) {
@@ -2140,8 +2339,12 @@ textarea:focus {
   .modal-backdrop {
     padding: 10px;
   }
-}
 
+  .pagination-page-btn {
+    min-width: 40px;
+    height: 40px;
+  }
+}
 @media print {
   .modal-backdrop,
   .cashier-topbar,
@@ -2149,11 +2352,94 @@ textarea:focus {
   .product-card-actions,
   .hero-quick-actions,
   .sidebar,
-  .topbar {
+  .topbar,
+  .pagination-bar {
     display: none !important;
   }
 
   .page-content {
     padding: 0 !important;
   }
+  /* ============================================
+   IMAGE SOURCE SWITCH
+   ============================================ */
+
+.image-source-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px dashed #dcdfe3;
+  border-radius: 10px;
+  background: #f7f8f9;
+}
+
+.image-source-switch .chip {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.image-source-switch .chip.active {
+  background: #f6f4ff;
+  border-color: #d7d3fb;
+  color: var(--primary-strong);
+}
+
+/* ============================================
+   INVENTORY HISTORY PILLS
+   ============================================ */
+
+.history-change-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  min-width: 48px;
+}
+
+.history-change-pill.success {
+  background: #e2f5ec;
+  color: #218353;
+  border-color: #c3edd7;
+}
+
+.history-change-pill.danger {
+  background: #fde8e8;
+  color: #b02525;
+  border-color: #f5c2c2;
+}
+
+.history-change-pill.neutral {
+  background: #f1f3f5;
+  color: #5f666d;
+  border-color: #e2e5e8;
+}
+.image-source-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px dashed #dcdfe3;
+  border-radius: 10px;
+  background: #f7f8f9;
+}
+
+.image-source-switch .chip {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.image-source-switch .chip.active {
+  background: #f6f4ff;
+  border-color: #d7d3fb;
+  color: var(--primary-strong);
+}
+
+
 }

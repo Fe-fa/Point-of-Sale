@@ -18,7 +18,9 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Products retrieved successfully.',
-            'data' => $this->service->paginate($request->only('search', 'category_id', 'is_active', 'per_page')),
+            'data'    => $this->service->paginate(
+                $request->only('search', 'category_id', 'is_active', 'per_page')
+            ),
         ]);
     }
 
@@ -26,7 +28,7 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Product created successfully.',
-            'data' => $this->service->create($request->validated()),
+            'data'    => $this->service->create($request->validated()),
         ], 201);
     }
 
@@ -34,7 +36,7 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Product retrieved successfully.',
-            'data' => $this->service->show($product),
+            'data'    => $this->service->show($product),
         ]);
     }
 
@@ -42,7 +44,7 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Product updated successfully.',
-            'data' => $this->service->update($product, $request->validated()),
+            'data'    => $this->service->update($product, $request->validated()),
         ]);
     }
 

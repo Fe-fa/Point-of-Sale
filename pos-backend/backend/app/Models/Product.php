@@ -4,8 +4,11 @@ namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class Product extends Model
 {
@@ -33,6 +36,23 @@ class Product extends Model
         'vat_rate' => 'decimal:2',
         'is_active' => 'boolean',
     ];
+
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value) {
+                if (!$value) {
+                    return null;
+                }
+
+                if (filter_var($value, FILTER_VALIDATE_URL)) {
+                    return $value;
+                }
+
+                return url(Storage::url($value));
+            }
+        );
+    }
 
     public function category(): BelongsTo
     {

@@ -133,13 +133,9 @@ export default function AdminStoresPage() {
 <div className="section-header">
   <div>
     <h2>Manager store access</h2>
-    <p>
-      You can switch between your assigned stores from the top bar,
-      but store creation remains a system admin task.
-    </p>
+    <p>Store management is restricted to system administrators. Please contact your administrator for assistance.</p>
   </div>
 </div>
-
       </section>
     );
   }
@@ -149,14 +145,13 @@ export default function AdminStoresPage() {
 <div className="section-header">
   <div>
     <h2>Stores</h2>
-    <p>Create new stores, update business details, and control which branches are active.</p>
   </div>
 </div>
       <div className="metrics-grid">
-        <SummaryCard icon={StoreIcon} label="Stores" value={stores.length} caption="Total registered branches" />
-        <SummaryCard icon={Building2} label="Active" value={summary.active} caption="Stores available in the workspace" />
-        <SummaryCard icon={MapPin} label="Inactive" value={summary.inactive} caption="Locations currently disabled" />
-        <SummaryCard icon={Phone} label="Currencies" value={summary.currencies} caption="Unique currency configurations" />
+        <SummaryCard icon={StoreIcon} label="Stores" value={stores.length}  />
+        <SummaryCard icon={Building2} label="Active" value={summary.active}  />
+        <SummaryCard icon={MapPin} label="Inactive" value={summary.inactive}  />
+        <SummaryCard icon={Phone} label="Currencies" value={summary.currencies} />
       </div>
 
       <div className="dashboard-grid two-wide">

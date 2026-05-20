@@ -27,7 +27,6 @@ export default function AdminOrdersPage() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     loadOrders();
   }, [status]);

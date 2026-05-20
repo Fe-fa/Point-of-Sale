@@ -1,9 +1,12 @@
 <?php
 
 namespace App\Models;
+
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo; 
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Exception;
 
 class Category extends Model
 {
@@ -18,10 +21,16 @@ class Category extends Model
         'category_name',
     ];
 
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class, 'store_id', 'store_id');
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class, 'category_id', 'category_id');
     }
+
     protected static function boot()
     {
         parent::boot();

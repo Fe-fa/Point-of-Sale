@@ -18,7 +18,21 @@ class InventoryController extends Controller
     {
         return response()->json([
             'message' => 'Inventory retrieved successfully.',
-            'data' => $this->service->paginate($request->user(), $request->only('store_id', 'search', 'per_page')),
+            'data'    => $this->service->paginate(
+                $request->user(),
+                $request->only('store_id', 'search', 'per_page')
+            ),
+        ]);
+    }
+
+    public function history(Request $request): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Inventory history retrieved successfully.',
+            'data'    => $this->service->paginateHistory(
+                $request->user(),
+                $request->only('store_id', 'product_id', 'change_type', 'search', 'per_page')
+            ),
         ]);
     }
 
@@ -26,7 +40,7 @@ class InventoryController extends Controller
     {
         return response()->json([
             'message' => 'Inventory created successfully.',
-            'data' => $this->service->create($request->user(), $request->validated()),
+            'data'    => $this->service->create($request->user(), $request->validated()),
         ], 201);
     }
 
@@ -34,7 +48,7 @@ class InventoryController extends Controller
     {
         return response()->json([
             'message' => 'Inventory retrieved successfully.',
-            'data' => $this->service->show($inventory),
+            'data'    => $this->service->show($inventory),
         ]);
     }
 
@@ -42,7 +56,7 @@ class InventoryController extends Controller
     {
         return response()->json([
             'message' => 'Inventory updated successfully.',
-            'data' => $this->service->update($request->user(), $inventory, $request->validated()),
+            'data'    => $this->service->update($request->user(), $inventory, $request->validated()),
         ]);
     }
 

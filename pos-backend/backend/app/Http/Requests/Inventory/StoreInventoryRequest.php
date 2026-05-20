@@ -14,10 +14,11 @@ class StoreInventoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'store_id'      => 'required|exists:stores,store_id',
-            'product_id'    => 'required|exists:products,product_id',
-            'quantity'      => 'required|integer|min:0',
-            'reorder_level' => 'nullable|integer|min:0',
+            'store_id'      => ['required', 'exists:stores,store_id'],
+            'product_id'    => ['required', 'exists:products,product_id'],
+            'batch_no'      => ['nullable', 'string', 'max:100'],
+            'quantity'      => ['required', 'integer', 'min:0'],
+            'reorder_level' => ['nullable', 'integer', 'min:0'],
         ];
     }
 }

@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Product;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class ProductService
 {
@@ -20,7 +22,7 @@ class ProductService
             $search = trim($filters['search']);
             $query->where(function ($q) use ($search) {
                 $q->where('product_name', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%");
+                  ->orWhere('sku', 'like', "%{$search}%");
             });
         }
 
@@ -37,15 +39,19 @@ class ProductService
 
     public function create(array $data): Product
     {
+        $imageValue = $this->resolveImageValue($data, null);
+
         return Product::create([
-            'category_id' => $data['category_id'],
-            'sku' => $data['sku'],
+            'category_id'  => $data['category_id'],
+            'sku'          => $data['sku'],
             'product_name' => $data['product_name'],
-            'price' => $data['price'],
-            'cost_price' => $data['cost_price'],
-            'vat_rate' => $data['vat_rate'] ?? 0,
-            'image_url' => $data['image_url'] ?? null,
-            'is_active' => $data['is_active'] ?? true,
+            'price'        => $data['price'],
+            'cost_price'   => $data['cost_price'],
+            'vat_rate'     => $data['vat_rate'] ?? 0,
+            'image_url'    => $imageValue,
+            'is_active'    => isset($data['is_active'])
+                ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
+                : true,
         ])->load('category');
     }
 
@@ -56,16 +62,29 @@ class ProductService
 
     public function update(Product $product, array $data): Product
     {
-        $product->update([
-            'category_id' => $data['category_id'] ?? $product->category_id,
-            'sku' => $data['sku'] ?? $product->sku,
+        $updateData = [
+            'category_id'  => $data['category_id'] ?? $product->category_id,
+            'sku'          => $data['sku'] ?? $product->sku,
             'product_name' => $data['product_name'] ?? $product->product_name,
-            'price' => $data['price'] ?? $product->price,
-            'cost_price' => $data['cost_price'] ?? $product->cost_price,
-            'vat_rate' => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
-            'image_url' => array_key_exists('image_url', $data) ? $data['image_url'] : $product->image_url,
-            'is_active' => array_key_exists('is_active', $data) ? $data['is_active'] : $product->is_active,
-        ]);
+            'price'        => $data['price'] ?? $product->price,
+            'cost_price'   => $data['cost_price'] ?? $product->cost_price,
+            'vat_rate'     => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
+            'is_active'    => array_key_exists('is_active', $data)
+                ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
+                : $product->is_active,
+        ];
+
+        if ($this->shouldUpdateImage($data)) {
+            $previous = $product->getRawOriginal('image_url');
+
+            if ($previous && !filter_var($previous, FILTER_VALIDATE_URL)) {
+                Storage::disk('public')->delete($previous);
+            }
+
+            $updateData['image_url'] = $this->resolveImageValue($data, $previous);
+        }
+
+        $product->update($updateData);
 
         return $product->fresh()->load('category');
     }
@@ -84,6 +103,46 @@ class ProductService
             ], 422));
         }
 
+        $rawImage = $product->getRawOriginal('image_url');
+
+        if ($rawImage && !filter_var($rawImage, FILTER_VALIDATE_URL)) {
+            Storage::disk('public')->delete($rawImage);
+        }
+
         $product->delete();
+    }
+
+    private function shouldUpdateImage(array $data): bool
+    {
+        if (!empty($data['clear_image'])) {
+            return true;
+        }
+
+        if (isset($data['image']) && $data['image'] instanceof UploadedFile) {
+            return true;
+        }
+
+        if (array_key_exists('image_url', $data) && filled($data['image_url'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function resolveImageValue(array $data, ?string $previous): ?string
+    {
+        if (!empty($data['clear_image'])) {
+            return null;
+        }
+
+        if (isset($data['image']) && $data['image'] instanceof UploadedFile) {
+            return $data['image']->store('products', 'public');
+        }
+
+        if (array_key_exists('image_url', $data) && filled($data['image_url'])) {
+            return $data['image_url'];
+        }
+
+        return $previous;
     }
 }
