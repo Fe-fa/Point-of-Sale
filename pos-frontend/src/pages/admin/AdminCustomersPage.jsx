@@ -20,17 +20,23 @@ export default function AdminCustomersPage() {
   const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadCustomers = async () => {
+    if (!storeId) {
+      setCustomers([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const response = await customerService.list({ search, per_page: 100 });
+      const response = await customerService.list({ store_id: storeId, search, per_page: 100 });
       setCustomers(extractList(response));
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load customers.');
@@ -41,8 +47,24 @@ export default function AdminCustomersPage() {
   };
 
   useEffect(() => {
+    setCustomers([]);
+    setSearch('');
+    setShowModal(false);
+    setEditingId(null);
+    setForm(initialForm);
+    setError('');
+
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+
     loadCustomers();
-  }, [search]);
+  }, [storeId]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [storeId, search]);
 
   const resetForm = () => {
     setForm(initialForm);
@@ -66,8 +88,14 @@ export default function AdminCustomersPage() {
     setError('');
     setSubmitting(true);
     try {
-      if (editingId) await customerService.update(editingId, form);
-      else await customerService.create(form);
+      const payload = {
+        store_id: Number(storeId),
+        ...form,
+      };
+
+      if (editingId) await customerService.update(editingId, payload);
+      else await customerService.create(payload);
+
       setShowModal(false);
       resetForm();
       await loadCustomers();
@@ -103,16 +131,16 @@ export default function AdminCustomersPage() {
   return (
     <>
       <section className="stack-lg">
-<div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-  <div className="catalog-hero-copy" style={{ display: 'flex', flexDirection: 'column' }}>
-    <h2 className="catalog-title">Customers</h2>
-    <p className="catalog-subtitle">{customers.length} customer records</p>
-  </div>
+        <div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div className="catalog-hero-copy" style={{ display: 'flex', flexDirection: 'column' }}>
+            <h2 className="catalog-title">Customers</h2>
+            <p className="catalog-subtitle">{customers.length} customer records</p>
+          </div>
 
-  <button type="button" className="ghost-button" onClick={openCreateModal} style={{ whiteSpace: 'nowrap' }}>
-    New customer
-  </button>
-</div>
+          <button type="button" className="ghost-button" onClick={openCreateModal} style={{ whiteSpace: 'nowrap' }} disabled={!storeId}>
+            New customer
+          </button>
+        </div>
 
         <div className="catalog-toolbar">
           <label className="catalog-search">
@@ -121,8 +149,10 @@ export default function AdminCustomersPage() {
               placeholder="Search customer"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              disabled={!storeId}
             />
           </label>
+          <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
         </div>
 
         {error && !showModal ? <p className="form-error">{error}</p> : null}
@@ -139,7 +169,9 @@ export default function AdminCustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {!storeId ? (
+                  <tr><td colSpan="4">Select a store first.</td></tr>
+                ) : loading ? (
                   <tr><td colSpan="4">Loading...</td></tr>
                 ) : customers.length ? (
                   customers.map((customer) => (

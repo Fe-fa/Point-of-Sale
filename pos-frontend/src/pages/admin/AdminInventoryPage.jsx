@@ -12,7 +12,7 @@ const initialForm = {
 };
 
 const extractList = (res) => {
-  if (Array.isArray(res?.data?.data)) return res.data.data; // paginator.data
+  if (Array.isArray(res?.data?.data)) return res.data.data;
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res)) return res;
   return [];
@@ -26,7 +26,6 @@ const getInventoryStatus = (row) => {
   if ((reorder > 0 && quantity <= reorder) || quantity <= 12) {
     return { label: 'Low stock', tone: 'low' };
   }
-
   return { label: 'In stock', tone: 'normal' };
 };
 
@@ -51,14 +50,29 @@ export default function AdminInventoryPage() {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  const resetForm = () => {
+    setForm(initialForm);
+    setEditingId(null);
+    setError('');
+  };
+
   const load = async () => {
+    if (!storeId) {
+      setRows([]);
+      setProducts([]);
+      setHistoryRows([]);
+      setLoading(false);
+      setHistoryLoading(false);
+      return;
+    }
+
     setLoading(true);
     setHistoryLoading(true);
     setError('');
@@ -66,7 +80,7 @@ export default function AdminInventoryPage() {
     try {
       const [inventoryRes, productsRes, historyRes] = await Promise.all([
         inventoryService.list({ store_id: storeId, per_page: 100 }),
-        productService.list({ per_page: 100 }),
+        productService.list({ store_id: storeId, per_page: 100 }),
         inventoryService.history({ store_id: storeId, per_page: 100 }),
       ]);
 
@@ -85,7 +99,20 @@ export default function AdminInventoryPage() {
   };
 
   useEffect(() => {
-    if (storeId) load();
+    setRows([]);
+    setProducts([]);
+    setHistoryRows([]);
+    setSearch('');
+    setShowModal(false);
+    resetForm();
+
+    if (!storeId) {
+      setLoading(false);
+      setHistoryLoading(false);
+      return;
+    }
+
+    load();
   }, [storeId]);
 
   const filteredRows = useMemo(() => {
@@ -122,12 +149,6 @@ export default function AdminInventoryPage() {
     () => rows.filter((row) => getInventoryStatus(row).tone === 'low').length,
     [rows]
   );
-
-  const resetForm = () => {
-    setForm(initialForm);
-    setEditingId(null);
-    setError('');
-  };
 
   const openCreateModal = () => {
     resetForm();
@@ -196,10 +217,7 @@ export default function AdminInventoryPage() {
   return (
     <>
       <section className="inventory-page stack-lg">
-        <div
-          className="catalog-hero"
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
-        >
+        <div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div className="catalog-hero-copy" style={{ display: 'flex', flexDirection: 'column' }}>
             <h2 className="catalog-title">Inventory</h2>
             <p className="catalog-subtitle">
@@ -213,6 +231,7 @@ export default function AdminInventoryPage() {
             className="ghost-button"
             onClick={openCreateModal}
             style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+            disabled={!storeId}
           >
             <Plus size={16} />
             <span>Add stock line</span>
@@ -230,6 +249,7 @@ export default function AdminInventoryPage() {
               placeholder="Search product, SKU, batch"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              disabled={!storeId}
             />
           </label>
 
@@ -253,7 +273,11 @@ export default function AdminInventoryPage() {
               </thead>
 
               <tbody>
-                {loading ? (
+                {!storeId ? (
+                  <tr>
+                    <td colSpan="6" className="catalog-empty-cell">Select a store first.</td>
+                  </tr>
+                ) : loading ? (
                   <tr>
                     <td colSpan="6" className="catalog-empty-cell">Loading...</td>
                   </tr>
@@ -332,7 +356,11 @@ export default function AdminInventoryPage() {
               </thead>
 
               <tbody>
-                {historyLoading ? (
+                {!storeId ? (
+                  <tr>
+                    <td colSpan="8" className="catalog-empty-cell">Select a store first.</td>
+                  </tr>
+                ) : historyLoading ? (
                   <tr>
                     <td colSpan="8" className="catalog-empty-cell">Loading history...</td>
                   </tr>
@@ -422,7 +450,8 @@ export default function AdminInventoryPage() {
                     onChange={(e) => setForm({ ...form, batch_no: e.target.value })}
                   />
                 </label>
-                                <label>
+
+                <label>
                   {editingId ? 'Current quantity' : 'Incoming quantity'}
                   <input
                     className="text-input"

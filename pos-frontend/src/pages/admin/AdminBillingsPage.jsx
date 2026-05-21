@@ -8,23 +8,45 @@ import { openBillingPrint } from '../../utils/print';
 export default function AdminBillingsPage() {
   const { stores, storeId } = useStore();
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
+
   const [billings, setBillings] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [selectedBilling, setSelectedBilling] = useState(null);
   const [error, setError] = useState('');
 
   const loadBillings = async () => {
+    if (!storeId) {
+      setBillings([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setError('');
     try {
-      const response = await billingService.list({ per_page: 100, status });
+      const response = await billingService.list({ per_page: 100, status, store_id: storeId });
       setBillings(response.data?.data || []);
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Unable to load billing records.');
+      setBillings([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadBillings(); }, [status]);
+  useEffect(() => {
+    setBillings([]);
+    setSelectedBilling(null);
+    setError('');
+
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+
+    loadBillings();
+  }, [storeId, status]);
 
   const openDetails = async (billingId) => {
     try {
@@ -38,18 +60,32 @@ export default function AdminBillingsPage() {
   return (
     <section className="stack-lg">
       <div className="section-header">
-        <select className="select-input slim" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select
+          className="select-input slim"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          disabled={!storeId}
+        >
           <option value="">All statuses</option>
           <option value="draft">Draft</option>
           <option value="unpaid">Unpaid</option>
           <option value="partial">Partial</option>
           <option value="paid">Paid</option>
         </select>
+
+        <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
       </div>
 
       <article className="card">
-        <div className="card-header"><div><h3>Billing records</h3><p>{billings.length} items</p></div></div>
+        <div className="card-header">
+          <div>
+            <h3>Billing records</h3>
+            <p>{billings.length} items</p>
+          </div>
+        </div>
+
         {error ? <p className="form-error">{error}</p> : null}
+
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -63,24 +99,31 @@ export default function AdminBillingsPage() {
                 <th>Actions</th>
               </tr>
             </thead>
+
             <tbody>
-              {loading ? (
+              {!storeId ? (
+                <tr><td colSpan="7">Select a store first.</td></tr>
+              ) : loading ? (
                 <tr><td colSpan="7">Loading...</td></tr>
-              ) : billings.length ? billings.map((billing) => (
-                <tr key={billing.billing_id}>
-                  <td>{billing.invnumber || `Draft #${billing.billing_id}`}</td>
-                  <td>{billing.customer?.full_name || 'Walk-in customer'}</td>
-                  <td>{currency(billing.total, currentStore?.currency)}</td>
-                  <td>{currency(billing.paid_amount, currentStore?.currency)}</td>
-                  <td><span className={`status-badge ${billing.status}`}>{billing.status}</span></td>
-                  <td>{formatDateTime(billing.billing_date)}</td>
-                  <td>
-                    <div className="row-actions compact">
-                      <button className="ghost-button" onClick={() => openDetails(billing.billing_id)}>View</button>
-                    </div>
-                  </td>
-                </tr>
-              )) : (
+              ) : billings.length ? (
+                billings.map((billing) => (
+                  <tr key={billing.billing_id}>
+                    <td>{billing.invnumber || `Draft #${billing.billing_id}`}</td>
+                    <td>{billing.customer?.full_name || 'Walk-in customer'}</td>
+                    <td>{currency(billing.total, currentStore?.currency)}</td>
+                    <td>{currency(billing.paid_amount, currentStore?.currency)}</td>
+                    <td><span className={`status-badge ${billing.status}`}>{billing.status}</span></td>
+                    <td>{formatDateTime(billing.billing_date)}</td>
+                    <td>
+                      <div className="row-actions compact">
+                        <button className="ghost-button" onClick={() => openDetails(billing.billing_id)}>
+                          View
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr><td colSpan="7">No billings found.</td></tr>
               )}
             </tbody>
@@ -141,8 +184,12 @@ export default function AdminBillingsPage() {
             </div>
 
             <div className="row-actions">
-              <button className="primary-button" onClick={() => openBillingPrint(selectedBilling, currentStore, 'invoice')}>Print invoice</button>
-              <button className="ghost-button" onClick={() => openBillingPrint(selectedBilling, currentStore, 'receipt')}>Print receipt</button>
+              <button className="primary-button" onClick={() => openBillingPrint(selectedBilling, currentStore, 'invoice')}>
+                Print invoice
+              </button>
+              <button className="ghost-button" onClick={() => openBillingPrint(selectedBilling, currentStore, 'receipt')}>
+                Print receipt
+              </button>
             </div>
           </div>
         ) : null}

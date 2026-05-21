@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Product;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreProductRequest extends FormRequest
 {
@@ -14,16 +15,23 @@ class StoreProductRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'category_id'  => ['required', 'exists:categories,category_id'],
-            'sku'          => ['required', 'string', 'max:50', 'unique:products,sku'],
-            'product_name' => ['required', 'string', 'max:255'],
-            'price'        => ['required', 'numeric', 'min:0'],
-            'cost_price'   => ['required', 'numeric', 'min:0'],
-            'vat_rate'     => ['nullable', 'numeric', 'min:0'],
-            'image'        => ['nullable', 'file', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
-            'image_url'    => ['nullable', 'url', 'max:2048'],
-            'clear_image'  => ['nullable', 'boolean'],
-            'is_active'    => ['required', 'boolean'],
+            'store_id'      => ['required', 'exists:stores,store_id'],
+            'category_id'   => ['required', 'exists:categories,category_id'],
+            'sku'           => [
+                'required',
+                'string',
+                'max:50',
+                Rule::unique('products', 'sku')
+                    ->where(fn ($q) => $q->where('store_id', $this->input('store_id'))),
+            ],
+            'product_name'  => ['required', 'string', 'max:255'],
+            'price'         => ['required', 'numeric', 'min:0'],
+            'cost_price'    => ['required', 'numeric', 'min:0'],
+            'vat_rate'      => ['nullable', 'numeric', 'min:0'],
+            'image'         => ['nullable', 'file', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
+            'image_url'     => ['nullable', 'url', 'max:2048'],
+            'clear_image'   => ['nullable', 'boolean'],
+            'is_active'     => ['required', 'boolean'],
         ];
     }
 

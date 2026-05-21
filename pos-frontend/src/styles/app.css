@@ -2440,6 +2440,42 @@ textarea:focus {
   border-color: #d7d3fb;
   color: var(--primary-strong);
 }
+.access-control-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.access-role-card {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.permission-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.permission-meta strong {
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.permission-meta span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+@media (min-width: 1100px) {
+  .access-control-grid {
+    grid-template-columns: 1.1fr 1fr;
+    align-items: start;
+  }
+}
+
 
 
 }

@@ -18,7 +18,10 @@ class BillingController extends Controller
     {
         return response()->json([
             'message' => 'Billings retrieved successfully.',
-            'data' => $this->service->paginate($request->user(), $request->only('status', 'is_draft', 'per_page')),
+            'data' => $this->service->paginate(
+                $request->user(),
+                $request->only('store_id', 'status', 'is_draft', 'per_page')
+            ),
         ]);
     }
 
@@ -30,42 +33,39 @@ class BillingController extends Controller
         ], 201);
     }
 
-public function show($id): JsonResponse 
-{
-    // 1. Manually try to find the billing record
-    $billing = \App\Models\Billing::find($id);
+    public function show($id): JsonResponse
+    {
+        $billing = Billing::find($id);
 
-    // 2. If it's not there, return a friendly JSON error instead of crashing
-    if (!$billing) {
+        if (!$billing) {
+            return response()->json([
+                'message' => "Billing record #{$id} was not found in our system.",
+                'data' => null
+            ], 404);
+        }
+
         return response()->json([
-            'message' => "Billing record #{$id} was not found in our system.",
-            'data' => null
-        ], 404);
+            'message' => 'Billing retrieved successfully.',
+            'data' => $this->service->show($billing),
+        ]);
     }
 
-    // 3. If it IS there, continue as normal
-    return response()->json([
-        'message' => 'Billing retrieved successfully.',
-        'data' => $this->service->show($billing),
-    ]);
-}
+    public function update(UpdateBillingRequest $request, $id): JsonResponse
+    {
+        $billing = Billing::find($id);
 
-   public function update(UpdateBillingRequest $request, $id): JsonResponse
-{
-    $billing = Billing::find($id);
+        if (!$billing) {
+            return response()->json([
+                'message' => "Update failed: Billing record #{$id} does not exist.",
+                'debug_info' => 'Check if the record was deleted or if the database was refreshed.'
+            ], 404);
+        }
 
-    if (!$billing) {
         return response()->json([
-            'message' => "Update failed: Billing record #{$id} does not exist.",
-            'debug_info' => 'Check if the record was deleted or if the database was refreshed.'
-        ], 404);
+            'message' => 'Billing updated successfully.',
+            'data' => $this->service->updateHeader($billing, $request->validated()),
+        ]);
     }
-
-    return response()->json([
-        'message' => 'Billing updated successfully.',
-        'data' => $this->service->updateHeader($billing, $request->validated()),
-    ]);
-}
 
     public function destroy(Billing $billing): JsonResponse
     {

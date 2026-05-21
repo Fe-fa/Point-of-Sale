@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Customer extends Model
@@ -15,6 +16,7 @@ class Customer extends Model
 
     protected $fillable = [
         'uuid',
+        'store_id',
         'full_name',
         'email',
         'phone',
@@ -24,6 +26,11 @@ class Customer extends Model
     protected $casts = [
         'current_balance' => 'decimal:2',
     ];
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class, 'store_id', 'store_id');
+    }
 
     public function billings(): HasMany
     {

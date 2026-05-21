@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { categoryService } from '../../services/categoryService';
+import { useStore } from '../../contexts/StoreContext';
 
 const initialForm = { category_name: '' };
 
@@ -12,20 +13,28 @@ const extractList = (res) => {
 };
 
 export default function AdminCategoriesPage() {
+  const { storeId } = useStore();
+
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadCategories = async () => {
+    if (!storeId) {
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const response = await categoryService.list({ search, per_page: 100 });
+      const response = await categoryService.list({ store_id: storeId, search, per_page: 100 });
       setCategories(extractList(response));
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load categories.');
@@ -36,8 +45,24 @@ export default function AdminCategoriesPage() {
   };
 
   useEffect(() => {
+    setCategories([]);
+    setSearch('');
+    setShowModal(false);
+    setEditingId(null);
+    setForm(initialForm);
+    setError('');
+
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+
     loadCategories();
-  }, [search]);
+  }, [storeId]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [storeId, search]);
 
   const resetForm = () => {
     setForm(initialForm);
@@ -61,19 +86,25 @@ export default function AdminCategoriesPage() {
     setError('');
     setSubmitting(true);
     try {
+      const payload = {
+        store_id: Number(storeId),
+        category_name: form.category_name,
+      };
+
       if (editingId) {
-        await categoryService.update(editingId, form);
+        await categoryService.update(editingId, payload);
       } else {
-        await categoryService.create(form);
+        await categoryService.create(payload);
       }
+
       setShowModal(false);
       resetForm();
       await loadCategories();
     } catch (err) {
       setError(
         err?.response?.data?.message ||
-          err?.response?.data?.errors?.category_name?.[0] ||
-          'Unable to save category.'
+        err?.response?.data?.errors?.category_name?.[0] ||
+        'Unable to save category.'
       );
     } finally {
       setSubmitting(false);
@@ -100,16 +131,16 @@ export default function AdminCategoriesPage() {
   return (
     <>
       <section className="stack-lg">
-<div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-  <div className="catalog-hero-copy" >
-    <h3 className="catalog-title">Categories</h3>
-    <p className="catalog-subtitle">{categories.length} category records</p>
-  </div>
+        <div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <div className="catalog-hero-copy">
+            <h3 className="catalog-title">Categories</h3>
+            <p className="catalog-subtitle">{categories.length} category records</p>
+          </div>
 
-  <button type="button" className="ghost-button" onClick={openCreateModal} style={{ whiteSpace: 'nowrap' }}>
-    New category
-  </button>
-</div>
+          <button type="button" className="ghost-button" onClick={openCreateModal} style={{ whiteSpace: 'nowrap' }} disabled={!storeId}>
+            New category
+          </button>
+        </div>
 
         <div className="catalog-toolbar">
           <label className="catalog-search">
@@ -118,8 +149,10 @@ export default function AdminCategoriesPage() {
               placeholder="Search category"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              disabled={!storeId}
             />
           </label>
+          <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
         </div>
 
         {error && !showModal ? <p className="form-error">{error}</p> : null}
@@ -135,7 +168,9 @@ export default function AdminCategoriesPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {!storeId ? (
+                  <tr><td colSpan="3">Select a store first.</td></tr>
+                ) : loading ? (
                   <tr><td colSpan="3">Loading...</td></tr>
                 ) : categories.length ? (
                   categories.map((category) => (

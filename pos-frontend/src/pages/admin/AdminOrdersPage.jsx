@@ -10,26 +10,43 @@ export default function AdminOrdersPage() {
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
 
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [error, setError] = useState('');
 
   const loadOrders = async () => {
+    if (!storeId) {
+      setOrders([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      const response = await billingService.list({ per_page: 100, status });
+      const response = await billingService.list({ per_page: 100, status, store_id: storeId });
       setOrders(response.data?.data || []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load orders.');
+      setOrders([]);
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
+    setOrders([]);
+    setSelectedOrder(null);
+    setError('');
+
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+
     loadOrders();
-  }, [status]);
+  }, [storeId, status]);
 
   const openDetails = async (billingId) => {
     try {
@@ -51,13 +68,22 @@ export default function AdminOrdersPage() {
             <p>Review store sales orders, balances, statuses, and print documents when needed.</p>
           </div>
 
-          <select className="select-input slim" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="unpaid">Unpaid</option>
-            <option value="partial">Partial</option>
-            <option value="paid">Paid</option>
-          </select>
+          <div className="row-actions compact">
+            <select
+              className="select-input slim"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              disabled={!storeId}
+            >
+              <option value="">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partial">Partial</option>
+              <option value="paid">Paid</option>
+            </select>
+
+            <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
+          </div>
         </div>
 
         <article className="card">
@@ -85,7 +111,9 @@ export default function AdminOrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {!storeId ? (
+                  <tr><td colSpan="8">Select a store first.</td></tr>
+                ) : loading ? (
                   <tr><td colSpan="8">Loading...</td></tr>
                 ) : orders.length ? (
                   orders.map((order) => (

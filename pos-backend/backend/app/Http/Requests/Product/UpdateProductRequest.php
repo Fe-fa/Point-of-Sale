@@ -14,25 +14,30 @@ class UpdateProductRequest extends FormRequest
 
     public function rules(): array
     {
-        $productId = $this->route('product')?->product_id ?? $this->route('product');
+        $product = $this->route('product');
+        $productId = $product?->product_id ?? $product;
+        $storeId = $this->input('store_id') ?: ($product?->store_id ?? null);
 
         return [
-            'category_id'  => ['sometimes', 'required', 'exists:categories,category_id'],
-            'sku'          => [
+            'store_id'      => ['required', 'exists:stores,store_id'],
+            'category_id'   => ['sometimes', 'required', 'exists:categories,category_id'],
+            'sku'           => [
                 'sometimes',
                 'required',
                 'string',
                 'max:50',
-                Rule::unique('products', 'sku')->ignore($productId, 'product_id'),
+                Rule::unique('products', 'sku')
+                    ->where(fn ($q) => $q->where('store_id', $storeId))
+                    ->ignore($productId, 'product_id'),
             ],
-            'product_name' => ['sometimes', 'required', 'string', 'max:255'],
-            'price'        => ['sometimes', 'required', 'numeric', 'min:0'],
-            'cost_price'   => ['sometimes', 'required', 'numeric', 'min:0'],
-            'vat_rate'     => ['nullable', 'numeric', 'min:0'],
-            'image'        => ['nullable', 'file', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
-            'image_url'    => ['nullable', 'url', 'max:2048'],
-            'clear_image'  => ['nullable', 'boolean'],
-            'is_active'    => ['sometimes', 'required', 'boolean'],
+            'product_name'  => ['sometimes', 'required', 'string', 'max:255'],
+            'price'         => ['sometimes', 'required', 'numeric', 'min:0'],
+            'cost_price'    => ['sometimes', 'required', 'numeric', 'min:0'],
+            'vat_rate'      => ['nullable', 'numeric', 'min:0'],
+            'image'         => ['nullable', 'file', 'image', 'mimes:jpeg,png,jpg,webp', 'max:2048'],
+            'image_url'     => ['nullable', 'url', 'max:2048'],
+            'clear_image'   => ['nullable', 'boolean'],
+            'is_active'     => ['sometimes', 'required', 'boolean'],
         ];
     }
 

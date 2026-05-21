@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\StoreController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\AccessControlController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -27,6 +28,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/verify-email', [AuthController::class, 'verifyEmail'])->name('auth.verify');
         Route::post('/resend-verification', [AuthController::class, 'resendVerification'])->name('auth.resend');
     });
+    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/access-control', [AccessControlController::class, 'index']);
+    Route::put('/access-control/roles/{roleName}/permissions', [AccessControlController::class, 'updateRolePermissions']);
+    Route::put('/access-control/users/{user}/role', [AccessControlController::class, 'assignUserRole']);
+});
 
     Route::apiResource('stores', StoreController::class);
     Route::apiResource('users', UserController::class);

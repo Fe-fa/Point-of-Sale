@@ -18,7 +18,10 @@ class CategoryController extends Controller
     {
         return response()->json([
             'message' => 'Categories retrieved successfully.',
-            'data' => $this->service->paginate($request->only('search', 'per_page')),
+            'data' => $this->service->paginate(
+                $request->user(),
+                $request->only('store_id', 'search', 'per_page')
+            ),
         ]);
     }
 
@@ -26,7 +29,7 @@ class CategoryController extends Controller
     {
         return response()->json([
             'message' => 'Category created successfully.',
-            'data' => $this->service->create($request->validated()),
+            'data' => $this->service->create($request->user(), $request->validated()),
         ], 201);
     }
 
@@ -34,7 +37,7 @@ class CategoryController extends Controller
     {
         return response()->json([
             'message' => 'Category retrieved successfully.',
-            'data' => $this->service->show($category),
+            'data' => $this->service->show($category, $this->requestUser()),
         ]);
     }
 
@@ -42,16 +45,21 @@ class CategoryController extends Controller
     {
         return response()->json([
             'message' => 'Category updated successfully.',
-            'data' => $this->service->update($category, $request->validated()),
+            'data' => $this->service->update($request->user(), $category, $request->validated()),
         ]);
     }
 
     public function destroy(Category $category): JsonResponse
     {
-        $this->service->delete($category);
+        $this->service->delete($this->requestUser(), $category);
 
         return response()->json([
             'message' => 'Category deleted successfully.',
         ]);
+    }
+
+    private function requestUser()
+    {
+        return request()->user();
     }
 }

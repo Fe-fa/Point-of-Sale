@@ -2,14 +2,41 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
 class ProductService
 {
-    public function paginate(array $filters = []): LengthAwarePaginator
+    private function allowedStoreIds(User $user)
+    {
+        return $user->stores()
+            ->pluck('stores.store_id')
+            ->push($user->default_store_id)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    private function authorizeStoreAccess(User $user, int|string|null $storeId): void
+    {
+        if (!$storeId || $user->isAdmin()) {
+            return;
+        }
+
+        $allowed = $this->allowedStoreIds($user)->map(fn ($id) => (string) $id)->all();
+
+        if (!in_array((string) $storeId, $allowed, true)) {
+            abort(response()->json([
+                'message' => 'You are not allowed to access this store.',
+            ], 403));
+        }
+    }
+
+    public function paginate(User $user, array $filters = []): LengthAwarePaginator
     {
         $perPage = (int)($filters['per_page'] ?? 15);
 
@@ -17,6 +44,15 @@ class ProductService
             ->with(['category'])
             ->withCount('inventories')
             ->orderByDesc('product_id');
+
+        if (!$user->isAdmin()) {
+            $query->whereIn('store_id', $this->allowedStoreIds($user));
+        }
+
+        if (!empty($filters['store_id'])) {
+            $this->authorizeStoreAccess($user, $filters['store_id']);
+            $query->where('store_id', $filters['store_id']);
+        }
 
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
@@ -37,39 +73,67 @@ class ProductService
         return $query->paginate($perPage);
     }
 
-    public function create(array $data): Product
+    public function create(User $user, array $data): Product
     {
+        $this->authorizeStoreAccess($user, $data['store_id']);
+
+        $category = Category::query()->findOrFail($data['category_id']);
+
+        if ((string) $category->store_id !== (string) $data['store_id']) {
+            abort(response()->json([
+                'message' => 'Selected category does not belong to the selected store.',
+            ], 422));
+        }
+
         $imageValue = $this->resolveImageValue($data, null);
 
         return Product::create([
-            'category_id'  => $data['category_id'],
-            'sku'          => $data['sku'],
-            'product_name' => $data['product_name'],
-            'price'        => $data['price'],
-            'cost_price'   => $data['cost_price'],
-            'vat_rate'     => $data['vat_rate'] ?? 0,
-            'image_url'    => $imageValue,
-            'is_active'    => isset($data['is_active'])
+            'store_id'      => $data['store_id'],
+            'category_id'   => $data['category_id'],
+            'sku'           => $data['sku'],
+            'product_name'  => $data['product_name'],
+            'price'         => $data['price'],
+            'cost_price'    => $data['cost_price'],
+            'vat_rate'      => $data['vat_rate'] ?? 0,
+            'image_url'     => $imageValue,
+            'is_active'     => isset($data['is_active'])
                 ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
                 : true,
         ])->load('category');
     }
 
-    public function show(Product $product): Product
+    public function show(User $user, Product $product): Product
     {
+        $this->authorizeStoreAccess($user, $product->store_id);
         return $product->load(['category', 'inventories.store']);
     }
 
-    public function update(Product $product, array $data): Product
+    public function update(User $user, Product $product, array $data): Product
     {
+        $this->authorizeStoreAccess($user, $product->store_id);
+
+        $storeId = $data['store_id'] ?? $product->store_id;
+        $this->authorizeStoreAccess($user, $storeId);
+
+        if (!empty($data['category_id'])) {
+            $category = Category::query()->findOrFail($data['category_id']);
+
+            if ((string) $category->store_id !== (string) $storeId) {
+                abort(response()->json([
+                    'message' => 'Selected category does not belong to the selected store.',
+                ], 422));
+            }
+        }
+
         $updateData = [
-            'category_id'  => $data['category_id'] ?? $product->category_id,
-            'sku'          => $data['sku'] ?? $product->sku,
-            'product_name' => $data['product_name'] ?? $product->product_name,
-            'price'        => $data['price'] ?? $product->price,
-            'cost_price'   => $data['cost_price'] ?? $product->cost_price,
-            'vat_rate'     => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
-            'is_active'    => array_key_exists('is_active', $data)
+            'store_id'      => $storeId,
+            'category_id'   => $data['category_id'] ?? $product->category_id,
+            'sku'           => $data['sku'] ?? $product->sku,
+            'product_name'  => $data['product_name'] ?? $product->product_name,
+            'price'         => $data['price'] ?? $product->price,
+            'cost_price'    => $data['cost_price'] ?? $product->cost_price,
+            'vat_rate'      => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
+            'is_active'     => array_key_exists('is_active', $data)
                 ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
                 : $product->is_active,
         ];
@@ -89,8 +153,10 @@ class ProductService
         return $product->fresh()->load('category');
     }
 
-    public function delete(Product $product): void
+    public function delete(User $user, Product $product): void
     {
+        $this->authorizeStoreAccess($user, $product->store_id);
+
         if ($product->billingItems()->exists()) {
             abort(response()->json([
                 'message' => 'Cannot delete product because it already appears in billing items.',

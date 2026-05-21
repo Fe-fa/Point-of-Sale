@@ -27,17 +27,37 @@ class BillingService
             ->unique()
             ->values();
     }
+
     private function scopeAccessible(Builder $query, User $user): Builder
     {
-        if ($user->isAdmin() || $user->isManager()) {
+        if ($user->isAdmin()) {
             return $query;
         }
 
         $storeIds = $this->allowedStoreIds($user);
 
+        if ($user->isManager()) {
+            return $query->whereIn('store_id', $storeIds);
+        }
+
         return $query
             ->whereIn('store_id', $storeIds)
             ->where('user_id', $user->user_id);
+    }
+
+    private function authorizeStoreAccess(User $user, int|string|null $storeId): void
+    {
+        if (!$storeId || $user->isAdmin()) {
+            return;
+        }
+
+        $allowed = $this->allowedStoreIds($user)->map(fn ($id) => (string) $id)->all();
+
+        if (!in_array((string) $storeId, $allowed, true)) {
+            abort(response()->json([
+                'message' => 'You are not allowed to access this store.',
+            ], 403));
+        }
     }
 
     private function authorizeBillingAccess(Billing $billing, ?User $actor = null): void
@@ -50,13 +70,23 @@ class BillingService
             ], 401));
         }
 
-        if ($actor->isAdmin() || $actor->isManager()) {
+        if ($actor->isAdmin()) {
             return;
         }
 
         $storeIds = $this->allowedStoreIds($actor)->map(fn ($id) => (string) $id)->all();
-
         $hasStoreAccess = in_array((string) $billing->store_id, $storeIds, true);
+
+        if ($actor->isManager()) {
+            if (!$hasStoreAccess) {
+                abort(response()->json([
+                    'message' => 'You are not allowed to access this billing.',
+                ], 403));
+            }
+
+            return;
+        }
+
         $ownsBilling = (string) $billing->user_id === (string) $actor->user_id;
 
         if (!$hasStoreAccess || !$ownsBilling) {
@@ -77,6 +107,11 @@ class BillingService
 
         $query = $this->scopeAccessible($query, $user);
 
+        if (!empty($filters['store_id'])) {
+            $this->authorizeStoreAccess($user, $filters['store_id']);
+            $query->where('store_id', $filters['store_id']);
+        }
+
         if (!empty($filters['status'])) {
             $query->where('status', $filters['status']);
         }
@@ -90,15 +125,7 @@ class BillingService
 
     public function createDraft(User $user, array $data): Billing
     {
-        if (!$user->isAdmin() && !$user->isManager()) {
-            $allowedStoreIds = $this->allowedStoreIds($user)->map(fn ($id) => (string) $id)->all();
-
-            if (!in_array((string) $data['store_id'], $allowedStoreIds, true)) {
-                abort(response()->json([
-                    'message' => 'You cannot create a draft for this store.',
-                ], 403));
-            }
-        }
+        $this->authorizeStoreAccess($user, $data['store_id']);
 
         $billing = Billing::create([
             'store_id' => $data['store_id'],
@@ -194,7 +221,6 @@ class BillingService
         return $billing->fresh(['items.product', 'payments']);
     }
 
-
     public function finalizeIfNeeded(Billing $billing, User $user): Billing
     {
         $this->authorizeBillingAccess($billing, $user);
@@ -218,7 +244,9 @@ class BillingService
                         'message' => "Insufficient stock for {$item->product->product_name}.",
                     ], 422));
                 }
+
                 $inventory->decrement('quantity', $item->quantity);
+
                 StockMovement::create([
                     'product_id' => $item->product_id,
                     'store_id' => $billing->store_id,
@@ -228,6 +256,7 @@ class BillingService
                     'user_id' => $user->user_id,
                 ]);
             }
+
             $billing->update([
                 'is_draft' => false,
                 'status' => 'unpaid',

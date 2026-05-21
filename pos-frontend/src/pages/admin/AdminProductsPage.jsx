@@ -14,7 +14,6 @@ const initialForm = {
   vat_rate: 0,
   apply_vat: false,
   is_active: true,
-
   image_mode: 'upload',
   image_file: null,
   image_url_input: '',
@@ -31,11 +30,7 @@ const extractList = (res) => {
 
 const formatApiError = (err) => {
   const response = err?.response?.data;
-
-  if (response?.errors) {
-    return Object.values(response.errors).flat().join(' ');
-  }
-
+  if (response?.errors) return Object.values(response.errors).flat().join(' ');
   return response?.message || err?.message || 'Unable to save product.';
 };
 
@@ -50,29 +45,32 @@ export default function AdminProductsPage() {
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const previewSrc = useMemo(() => {
     if (form.clear_image) return '';
-
-    if (form.image_mode === 'url') {
-      return form.image_url_input.trim();
-    }
-
+    if (form.image_mode === 'url') return form.image_url_input.trim();
     return form.image_preview;
   }, [form.clear_image, form.image_mode, form.image_preview, form.image_url_input]);
 
   const load = async () => {
+    if (!storeId) {
+      setProducts([]);
+      setCategories([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
       const [productsRes, categoriesRes] = await Promise.all([
-        productService.list({ search, per_page: 100 }),
-        categoryService.list({ per_page: 100 }),
+        productService.list({ store_id: storeId, search, per_page: 100 }),
+        categoryService.list({ store_id: storeId, per_page: 100 }),
       ]);
 
       setProducts(extractList(productsRes));
@@ -87,8 +85,25 @@ export default function AdminProductsPage() {
   };
 
   useEffect(() => {
+    setProducts([]);
+    setCategories([]);
+    setSearch('');
+    setShowModal(false);
+    setEditingId(null);
+    setForm(initialForm);
+    setError('');
+
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+
     load();
-  }, [search]);
+  }, [storeId]);
+
+  useEffect(() => {
+    load();
+  }, [storeId, search]);
 
   useEffect(() => {
     return () => {
@@ -102,7 +117,6 @@ export default function AdminProductsPage() {
     if (form.image_preview?.startsWith('blob:')) {
       URL.revokeObjectURL(form.image_preview);
     }
-
     setForm(initialForm);
     setEditingId(null);
     setError('');
@@ -193,23 +207,17 @@ export default function AdminProductsPage() {
     try {
       const formData = new FormData();
 
+      formData.append('store_id', String(Number(storeId)));
       formData.append('category_id', String(Number(form.category_id)));
       formData.append('sku', form.sku.trim());
       formData.append('product_name', form.product_name.trim());
       formData.append('price', String(Number(form.price)));
       formData.append('cost_price', String(Number(form.cost_price)));
-      formData.append(
-        'vat_rate',
-        String(form.apply_vat ? Number(form.vat_rate || 0) : 0)
-      );
+      formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
       formData.append('is_active', form.is_active ? 'true' : 'false');
       formData.append('clear_image', form.clear_image ? 'true' : 'false');
 
-      if (
-        form.image_mode === 'upload' &&
-        form.image_file &&
-        form.image_file instanceof File
-      ) {
+      if (form.image_mode === 'upload' && form.image_file && form.image_file instanceof File) {
         formData.append('image', form.image_file, form.image_file.name);
       }
 
@@ -235,7 +243,6 @@ export default function AdminProductsPage() {
 
   const handleEdit = (product) => {
     setEditingId(product.product_id);
-
     setForm({
       category_id: product.category_id || '',
       sku: product.sku || '',
@@ -245,14 +252,12 @@ export default function AdminProductsPage() {
       vat_rate: product.vat_rate || '',
       apply_vat: Number(product.vat_rate || 0) > 0,
       is_active: Boolean(product.is_active),
-
       image_mode: 'upload',
       image_file: null,
       image_url_input: '',
       image_preview: product.image_url || '',
       clear_image: false,
     });
-
     setError('');
     setShowModal(true);
   };
@@ -280,7 +285,7 @@ export default function AdminProductsPage() {
             <p className="catalog-subtitle">{products.length} products in catalog</p>
           </div>
 
-          <button type="button" className="ghost-button" onClick={openCreateModal}>
+          <button type="button" className="ghost-button" onClick={openCreateModal} disabled={!storeId}>
             <Plus size={18} />
             New product
           </button>
@@ -294,8 +299,10 @@ export default function AdminProductsPage() {
               placeholder="Search product"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              disabled={!storeId}
             />
           </label>
+          <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
         </div>
 
         {error && !showModal ? <p className="form-error">{error}</p> : null}
@@ -315,7 +322,11 @@ export default function AdminProductsPage() {
               </thead>
 
               <tbody>
-                {loading ? (
+                {!storeId ? (
+                  <tr>
+                    <td colSpan="6">Select a store first.</td>
+                  </tr>
+                ) : loading ? (
                   <tr>
                     <td colSpan="6">Loading...</td>
                   </tr>
