@@ -10,7 +10,7 @@ class AssignUserRoleRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isAdmin() ?? false;
+        return $this->user()?->hasRole(User::ROLE_ADMIN, 'sanctum') ?? false;
     }
 
     public function rules(): array
@@ -19,7 +19,11 @@ class AssignUserRoleRequest extends FormRequest
             'role' => [
                 'required',
                 'string',
-                Rule::in([User::ROLE_ADMIN, User::ROLE_MANAGER, User::ROLE_CASHIER]),
+                Rule::in([
+                    User::ROLE_ADMIN,
+                    User::ROLE_MANAGER,
+                    User::ROLE_CASHIER,
+                ]),
             ],
         ];
     }

@@ -11,7 +11,7 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStore } from '../../contexts/StoreContext';
 import { billingService } from '../../services/billingService';
@@ -85,11 +85,27 @@ const buildPagination = (currentPage, totalPages) => {
   return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
 };
 
+const isTypingElement = (target) => {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const tag = target.tagName;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || target.isContentEditable;
+};
+
+const isHotkeyBlockedElement = (target) => {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const tag = target.tagName;
+  return ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(tag) || target.isContentEditable;
+};
+
 export default function CashierPosPage() {
   const { user } = useAuth();
   const { stores, storeId, loading: storeLoading } = useStore();
 
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
+
+  const searchInputRef = useRef(null);
 
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -122,6 +138,19 @@ export default function CashierPosPage() {
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  const focusSearchInput = useCallback((selectText = false) => {
+    window.requestAnimationFrame(() => {
+      const input = searchInputRef.current;
+      if (!input) return;
+
+      input.focus();
+
+      if (selectText && typeof input.select === 'function') {
+        input.select();
+      }
+    });
+  }, []);
 
   const isOwnedByCurrentCashier = (record) => {
     if (!user?.user_id) return true;
@@ -269,6 +298,15 @@ export default function CashierPosPage() {
       if (!silent) setBillingLoading(false);
     }
   };
+useEffect(() => {
+  if (success) {
+    const timer = setTimeout(() => {
+      setSuccess('');
+    }, 4000); // 4 seconds
+
+    return () => clearTimeout(timer); // Clean up if the message changes before 4s is up
+  }
+}, [success]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -287,6 +325,12 @@ export default function CashierPosPage() {
     setCurrentPage(1);
   }, [activeCategory, search]);
 
+  useEffect(() => {
+    if (!storeLoading && !catalogLoading && !showPaymentModal && !showDraftModal) {
+      focusSearchInput();
+    }
+  }, [storeLoading, catalogLoading, showPaymentModal, showDraftModal, focusSearchInput]);
+
   const ensureDraft = async () => {
     if (billing?.billing_id) return billing;
 
@@ -303,7 +347,7 @@ export default function CashierPosPage() {
     return detail || createdDraft;
   };
 
-  const addOrIncrementProduct = async (product) => {
+const addOrIncrementProduct = async (product) => {
     const current = await ensureDraft();
 
     const existing = current?.items?.find(
@@ -322,9 +366,9 @@ export default function CashierPosPage() {
         unit_price: product.price,
       });
     }
-
     const updatedBilling = await loadBillingDetail(current.billing_id, { silent: true });
-    mergeDraftPreview(updatedBilling);
+    setDrafts((prev) => prev.filter((item) => String(item.billing_id) !== String(current.billing_id)));
+
     return updatedBilling;
   };
 
@@ -333,9 +377,14 @@ export default function CashierPosPage() {
     setSuccess('');
     setSubmitting(true);
 
+    setTimeout(() => {
+        setSuccess('');
+      }, 4000);
+
     try {
       await addOrIncrementProduct(product);
       setSuccess(`${product.product_name} added to billing.`);
+      focusSearchInput(true);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to add product.');
     } finally {
@@ -352,6 +401,10 @@ export default function CashierPosPage() {
     setError('');
     setSuccess('');
     setSubmitting(true);
+
+      //  setTimeout(() => {
+      //   setSuccess('');
+      // }, 4000);
 
     try {
       const updatedBilling = await addOrIncrementProduct(product);
@@ -383,6 +436,7 @@ export default function CashierPosPage() {
 
       const updatedBilling = await loadBillingDetail(billing.billing_id, { silent: true });
       mergeDraftPreview(updatedBilling);
+      focusSearchInput();
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to update quantity.');
     } finally {
@@ -401,6 +455,7 @@ export default function CashierPosPage() {
       await billingService.removeItem(billingItemId);
       const updatedBilling = await loadBillingDetail(billing.billing_id, { silent: true });
       mergeDraftPreview(updatedBilling);
+      focusSearchInput();
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to remove item.');
     } finally {
@@ -422,7 +477,7 @@ export default function CashierPosPage() {
     return updatedBilling;
   };
 
-  const handleSaveOrUpdateDraft = async () => {
+const handleSaveOrUpdateDraft = async () => {
     if (!billing?.items?.length) return;
 
     setError('');
@@ -438,8 +493,8 @@ export default function CashierPosPage() {
           ? `Draft #${updatedBilling.billing_id} updated successfully.`
           : 'Draft saved successfully.'
       );
+      resetSale();
 
-      setShowDraftModal(true);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to save draft.');
     } finally {
@@ -542,6 +597,7 @@ export default function CashierPosPage() {
       resetSale();
       setShowPaymentModal(false);
       setSuccess('Payment processed successfully.');
+      focusSearchInput(true);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to process payment.');
     } finally {
@@ -558,7 +614,8 @@ export default function CashierPosPage() {
       await loadBillingDetail(draftId);
       setShowDraftModal(false);
       setShowPaymentModal(false);
-      setSuccess('Draft loaded successfully. You can now edit and update it.');
+      setSuccess('Draft loaded successfully.');
+      focusSearchInput(true);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to load draft.');
     } finally {
@@ -583,12 +640,118 @@ export default function CashierPosPage() {
 
       removeDraftPreview(draftId);
       setSuccess('Draft deleted successfully.');
+      focusSearchInput();
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to delete draft.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const handleEscapeShortcut = useCallback(async () => {
+    if (submitting) return;
+
+    if (showPaymentModal) {
+      setShowPaymentModal(false);
+      focusSearchInput(true);
+      return;
+    }
+
+    if (showDraftModal) {
+      setShowDraftModal(false);
+      focusSearchInput(true);
+      return;
+    }
+
+    if (!billing?.billing_id && !billing?.items?.length && !search) {
+      focusSearchInput(true);
+      return;
+    }
+
+    const confirmed = window.confirm('Cancel the current sale and clear the active cart?');
+    if (!confirmed) return;
+
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+
+    try {
+      if (billing?.billing_id) {
+        await deleteBillingRecord(billing.billing_id);
+        removeDraftPreview(billing.billing_id);
+      }
+
+      resetSale();
+      setSearch('');
+      setSuccess('Current sale cleared.');
+      focusSearchInput(true);
+    } catch (err) {
+      setError(err?.response?.data?.message || err?.message || 'Unable to cancel current sale.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [
+    submitting,
+    showPaymentModal,
+    showDraftModal,
+    billing,
+    search,
+    focusSearchInput,
+  ]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event) => {
+      const blockedTarget = isHotkeyBlockedElement(event.target);
+      const typingTarget = isTypingElement(event.target);
+
+      if (event.key === 'F2') {
+        event.preventDefault();
+        focusSearchInput(true);
+        return;
+      }
+
+      if (event.key === 'F8') {
+        event.preventDefault();
+
+        if (!submitting && billing?.items?.length) {
+          void handleSaveOrUpdateDraft();
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void handleEscapeShortcut();
+        return;
+      }
+
+      const wantsCheckout =
+        (event.code === 'Space' || event.key === ' ' || event.key === 'Enter') &&
+        !blockedTarget &&
+        !typingTarget &&
+        !showPaymentModal &&
+        !showDraftModal;
+
+      if (wantsCheckout) {
+        if (!submitting && billing?.items?.length) {
+          event.preventDefault();
+          void handleProceedToPayment();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [
+    billing,
+    submitting,
+    showPaymentModal,
+    showDraftModal,
+    focusSearchInput,
+    handleSaveOrUpdateDraft,
+    handleProceedToPayment,
+    handleEscapeShortcut,
+  ]);
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
@@ -647,7 +810,6 @@ export default function CashierPosPage() {
             <div>
               <span className="eyebrow">Cashier</span>
               <h2>Fortune Supermarket</h2>
-              <p>Welcome to the Point of Sale Service Center</p>
             </div>
           </div>
 
@@ -671,7 +833,9 @@ export default function CashierPosPage() {
           <div className="card hero-card compact-hero">
             <div className="store-header-layout">
               <div className="store-brand-identity">
-                <span className="eyebrow">Cashier</span>
+                <span className="eyebrow">
+                   {user?.role || currentStore?.role || 'Cashier'}
+                        </span>
                 <h2 className="store-title">{currentStore?.store_name || 'Fortune Supermarket'}</h2>
               </div>
 
@@ -693,6 +857,7 @@ export default function CashierPosPage() {
             <div className="search-shell">
               <Search size={16} />
               <input
+                ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search products by name or SKU"
@@ -892,6 +1057,7 @@ export default function CashierPosPage() {
               </button>
               {draftsLoading ? <span className="muted inline-note">Refreshing drafts...</span> : null}
             </div>
+
             <div className="form-grid">
               <label>
                 Customer
@@ -948,8 +1114,7 @@ export default function CashierPosPage() {
                       >
                         <Plus size={14} />
                       </button>
-
-                      <strong>{currency(getItemTotal(item), currentStore?.currency)}</strong>
+                     <strong>{currency(item?.line_subtotal || 0, currentStore?.currency)}</strong>
 
                       <button
                         type="button"
@@ -975,11 +1140,6 @@ export default function CashierPosPage() {
               <div className="summary-box">
                 <span>VAT(16%)</span>
                 <strong>{currency(billing?.vat_amount || 0, currentStore?.currency)}</strong>
-              </div>
-
-              <div className="summary-box">
-                <span>Paid</span>
-                <strong>{currency(billing?.paid_amount || 0, currentStore?.currency)}</strong>
               </div>
               <div className="summary-box">
                 <span>Subtotal</span>
@@ -1098,20 +1258,7 @@ export default function CashierPosPage() {
                   {paymentMethod === 'cash' ? (
                     <div className="form-grid two-columns payment-fields-grid">
                       <label>
-                        Amount received
-                        <input
-                          className="text-input"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={amountReceived}
-                          onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Amount received"
-                        />
-                      </label>
-
-                      <label>
-                        Cash tendered
+                        Cash received
                         <input
                           className="text-input"
                           type="number"
@@ -1122,13 +1269,8 @@ export default function CashierPosPage() {
                           placeholder="Cash tendered"
                         />
                       </label>
-                    </div>
-                  ) : null}
-
-                  {paymentMethod === 'mpesa' ? (
-                    <div className="form-grid two-columns payment-fields-grid">
-                      <label>
-                        Amount received
+                                            <label>
+                        Amount to be paid
                         <input
                           className="text-input"
                           type="number"
@@ -1136,7 +1278,24 @@ export default function CashierPosPage() {
                           step="0.01"
                           value={amountReceived}
                           onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Amount received"
+                          placeholder="Amount to be paid"
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {paymentMethod === 'mpesa' ? (
+                    <div className="form-grid two-columns payment-fields-grid">
+                      <label>
+                        Amount to be paid
+                        <input
+                          className="text-input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={amountReceived}
+                          onChange={(e) => setAmountReceived(e.target.value)}
+                          placeholder="Amount to be paid"
                         />
                       </label>
 
@@ -1292,7 +1451,6 @@ export default function CashierPosPage() {
                       >
                         Edit
                       </button>
-
                       <button
                         type="button"
                         className="ghost-button danger-button"

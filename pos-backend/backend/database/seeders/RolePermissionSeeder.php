@@ -10,11 +10,13 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionSeeder extends Seeder
 {
+    private const GUARD = 'sanctum';
+
     public function run(): void
     {
-        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $permissions = [
+        $allPermissions = [
             'stores.manage',
             'users.manage',
             'users.assign',
@@ -27,17 +29,7 @@ class RolePermissionSeeder extends Seeder
             'payments.charge',
         ];
 
-        foreach ($permissions as $permission) {
-            Permission::findOrCreate($permission, 'sanctum');
-        }
-
-        $admin = Role::findOrCreate(User::ROLE_ADMIN, 'sanctum');
-        $manager = Role::findOrCreate(User::ROLE_MANAGER, 'sanctum');
-        $cashier = Role::findOrCreate(User::ROLE_CASHIER, 'sanctum');
-
-        $admin->syncPermissions($permissions);
-
-        $manager->syncPermissions([
+        $managerPermissions = [
             'users.manage',
             'users.assign',
             'categories.manage',
@@ -47,11 +39,25 @@ class RolePermissionSeeder extends Seeder
             'billings.manage',
             'orders.manage',
             'payments.charge',
-        ]);
+        ];
 
-        $cashier->syncPermissions([
+        $cashierPermissions = [
             'billings.manage',
             'payments.charge',
-        ]);
+        ];
+
+        foreach ($allPermissions as $permission) {
+            Permission::findOrCreate($permission, self::GUARD);
+        }
+
+        $admin = Role::findOrCreate(User::ROLE_ADMIN, self::GUARD);
+        $manager = Role::findOrCreate(User::ROLE_MANAGER, self::GUARD);
+        $cashier = Role::findOrCreate(User::ROLE_CASHIER, self::GUARD);
+
+        $admin->syncPermissions($allPermissions);
+        $manager->syncPermissions($managerPermissions);
+        $cashier->syncPermissions($cashierPermissions);
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 }

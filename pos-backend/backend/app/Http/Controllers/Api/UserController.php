@@ -178,24 +178,27 @@ class UserController extends Controller
         ]);
     }
 
-    public function syncStores(StoreAssignmentRequest $request, User $user): JsonResponse
-    {
-        $actor = $request->user();
-
-        if (! $this->canManageUser($actor, $user) || $user->isAdmin()) {
-            return response()->json(['message' => 'You cannot change stores for this user.'], 403);
+public function syncStores(StoreAssignmentRequest $request, User $user): JsonResponse
+{
+    $actor = $request->user();
+    if (! $actor->isAdmin()) {
+        if (! $actor->hasPermissionTo('stores.assign')) {
+            return response()->json(['message' => 'You do not have permission to assign stores.'], 403);
         }
-
-        $storeIds = array_values(array_unique($request->validated('store_ids')));
-        $this->assertStoreScope($actor, $storeIds);
-        $this->syncUserStores($user, $storeIds);
-        $user->update(['default_store_id' => $storeIds[0] ?? null]);
-
-        return response()->json([
-            'message' => 'Store assignment updated successfully.',
-            'user' => $this->transformUser($user->fresh(['defaultStore', 'stores'])),
-        ]);
+        if (! $this->canManageUser($actor, $user)) {
+            return response()->json(['message' => 'You are not authorized to manage this user.'], 403);
+        }
     }
+    $storeIds = array_values(array_unique($request->validated('store_ids')));
+    $this->assertStoreScope($actor, $storeIds);
+    $this->syncUserStores($user, $storeIds);
+    $user->update(['default_store_id' => $storeIds[0] ?? null]);
+
+    return response()->json([
+        'message' => 'Store assignment updated successfully.',
+        'user' => $this->transformUser($user->fresh(['defaultStore', 'stores'])),
+    ]);
+}
 
     private function canManageUser(User $actor, User $target): bool
     {

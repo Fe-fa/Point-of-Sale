@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\AccessControl;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -9,7 +10,7 @@ class UpdateRolePermissionsRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->isAdmin() ?? false;
+        return $this->user()?->hasRole(User::ROLE_ADMIN, 'sanctum') ?? false;
     }
 
     public function rules(): array
@@ -18,7 +19,9 @@ class UpdateRolePermissionsRequest extends FormRequest
             'permissions' => ['required', 'array'],
             'permissions.*' => [
                 'string',
-                Rule::exists('permissions', 'name')->where(fn ($q) => $q->where('guard_name', 'sanctum')),
+                Rule::exists('permissions', 'name')->where(
+                    fn ($query) => $query->where('guard_name', 'sanctum')
+                ),
             ],
         ];
     }

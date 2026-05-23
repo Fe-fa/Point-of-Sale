@@ -75,4 +75,5 @@ class BillingController extends Controller
             'message' => 'Billing deleted successfully.',
         ]);
     }
+    
 }

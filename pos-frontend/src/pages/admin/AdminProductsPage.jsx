@@ -199,47 +199,58 @@ export default function AdminProductsPage() {
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSubmitting(true);
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setSubmitting(true);
 
-    try {
-      const formData = new FormData();
+  try {
+    const formData = new FormData();
+    
+    // ... (keep your existing appends for store_id, sku, etc.)
+    formData.append('store_id', String(Number(storeId)));
+    formData.append('category_id', String(Number(form.category_id)));
+    formData.append('sku', form.sku.trim());
+    formData.append('product_name', form.product_name.trim());
+    formData.append('price', String(Number(form.price)));
+    formData.append('cost_price', String(Number(form.cost_price)));
+    formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
+    formData.append('is_active', form.is_active ? 'true' : 'false');
+    formData.append('clear_image', form.clear_image ? 'true' : 'false');
 
-      formData.append('store_id', String(Number(storeId)));
-      formData.append('category_id', String(Number(form.category_id)));
-      formData.append('sku', form.sku.trim());
-      formData.append('product_name', form.product_name.trim());
-      formData.append('price', String(Number(form.price)));
-      formData.append('cost_price', String(Number(form.cost_price)));
-      formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
-      formData.append('is_active', form.is_active ? 'true' : 'false');
-      formData.append('clear_image', form.clear_image ? 'true' : 'false');
+    // DEBUGGING BLOCK
+    console.log('Mode:', form.image_mode);
+    console.log('Is instance of File?', form.image_file instanceof File);
+    console.log('File Object:', form.image_file);
 
-      if (form.image_mode === 'upload' && form.image_file && form.image_file instanceof File) {
-        formData.append('image', form.image_file, form.image_file.name);
-      }
-
-      if (form.image_mode === 'url' && form.image_url_input.trim()) {
-        formData.append('image_url', form.image_url_input.trim());
-      }
-
-      if (editingId) {
-        await productService.update(editingId, formData);
-      } else {
-        await productService.create(formData);
-      }
-
-      setShowModal(false);
-      resetForm();
-      await load();
-    } catch (err) {
-      setError(formatApiError(err));
-    } finally {
-      setSubmitting(false);
+    if (form.image_mode === 'upload' && form.image_file && form.image_file instanceof File) {
+      formData.append('image', form.image_file);
+      console.log('File successfully appended to FormData');
+    } else if (form.image_mode === 'upload') {
+      console.error('Upload mode active but no valid file found!');
     }
-  };
+
+    // Verify FormData contents
+    for (let [key, value] of formData.entries()) {
+      console.log(`FormData Entry: ${key} =`, value);
+    }
+
+    if (editingId) {
+      await productService.update(editingId, formData);
+    } else {
+      await productService.create(formData);
+    }
+
+    setShowModal(false);
+    resetForm();
+    await load();
+  } catch (err) {
+    console.error('API Error:', err);
+    setError(formatApiError(err));
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleEdit = (product) => {
     setEditingId(product.product_id);

@@ -42,6 +42,11 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+        // ADD THIS SECTION:
+    'sanctum' => [
+        'driver' => 'sanctum',
+        'provider' => 'users',
+    ],
     ],
 
     /*

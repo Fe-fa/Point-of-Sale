@@ -27,7 +27,6 @@ const paidStatuses = ['paid', 'partial'];
 function MetricCard({ icon: Icon, label, value, caption, tone = 'brown' }) {
   return (
     <article className={`metric-card metric-tone-${tone}`}>
-      {/* Aligned top container segment */}
       <div className="metric-card-top">
         <p className="metric-label-alignment">{label}</p>
         <div className="metric-icon-badge">

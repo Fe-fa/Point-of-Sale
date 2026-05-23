@@ -30,6 +30,7 @@ const adminNavItems = [
   { to: '/admin/billings', label: 'Billings', icon: ReceiptText },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBasket },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
+  { to: '/admin/access-control', label: 'Access Control', icon: Users },
 ];
 
 const managerNavItems = [

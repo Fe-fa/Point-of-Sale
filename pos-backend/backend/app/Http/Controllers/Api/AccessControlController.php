@@ -7,38 +7,56 @@ use App\Http\Requests\AccessControl\AssignUserRoleRequest;
 use App\Http\Requests\AccessControl\UpdateRolePermissionsRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class AccessControlController extends Controller
 {
+    private const GUARD = 'sanctum';
+
+    private const ALL_ROLES = [
+        User::ROLE_ADMIN,
+        User::ROLE_MANAGER,
+        User::ROLE_CASHIER,
+    ];
+
+    private const EDITABLE_ROLES = [
+        User::ROLE_MANAGER,
+        User::ROLE_CASHIER,
+    ];
+
     public function index(): JsonResponse
     {
         $permissions = Permission::query()
-            ->where('guard_name', 'sanctum')
+            ->where('guard_name', self::GUARD)
             ->orderBy('name')
             ->get()
             ->map(fn ($permission) => [
                 'name' => $permission->name,
-                'label' => $permission->name,
+                'label' => Str::of($permission->name)->replace('.', ' ')->title()->toString(),
             ])
             ->values();
 
         $roles = Role::query()
-            ->where('guard_name', 'sanctum')
-            ->whereIn('name', [User::ROLE_ADMIN, User::ROLE_MANAGER, User::ROLE_CASHIER])
-            ->orderBy('name')
+            ->where('guard_name', self::GUARD)
+            ->whereIn('name', self::ALL_ROLES)
+            ->with('permissions:id,name')
             ->get()
-            ->map(function ($role) {
-                return [
-                    'name' => $role->name,
-                    'permissions' => $role->permissions()->pluck('name')->values(),
-                ];
-            })
+            ->sortBy(fn ($role) => array_search($role->name, self::ALL_ROLES, true))
+            ->values()
+            ->map(fn ($role) => [
+                'name' => $role->name,
+                'permissions' => $role->permissions->pluck('name')->sort()->values(),
+            ])
             ->values();
 
         $users = User::query()
-            ->with(['stores:store_id,store_name'])
+            ->with([
+                'stores:store_id,store_name',
+                'roles:id,name',
+            ])
             ->orderByDesc('user_id')
             ->get()
             ->map(function ($user) {
@@ -50,7 +68,7 @@ class AccessControlController extends Controller
                     'user_id' => $user->user_id,
                     'full_name' => $fullName,
                     'email' => $user->email,
-                    'role' => $user->getRoleNames()->first() ?? $user->role,
+                    'role' => $user->roles->pluck('name')->first() ?? $user->role ?? null,
                     'stores' => $user->stores->map(fn ($store) => [
                         'store_id' => $store->store_id,
                         'store_name' => $store->store_name,
@@ -71,44 +89,66 @@ class AccessControlController extends Controller
         UpdateRolePermissionsRequest $request,
         string $roleName
     ): JsonResponse {
-        if (!in_array($roleName, [User::ROLE_MANAGER, User::ROLE_CASHIER], true)) {
+        if (!in_array($roleName, self::EDITABLE_ROLES, true)) {
             return response()->json([
                 'message' => 'Only manager and cashier role templates can be edited.',
             ], 422);
         }
 
-        $role = Role::findByName($roleName, 'sanctum');
-        $role->syncPermissions($request->validated('permissions', []));
+        try {
+            $validated = $request->validated();
 
-        return response()->json([
-            'message' => ucfirst($roleName) . ' permissions updated successfully.',
-            'data' => [
-                'name' => $role->name,
-                'permissions' => $role->permissions()->pluck('name')->values(),
-            ],
-        ]);
+            $role = Role::findByName($roleName, self::GUARD);
+            $role->syncPermissions($validated['permissions'] ?? []);
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            $role->load('permissions:id,name');
+
+            return response()->json([
+                'message' => ucfirst($roleName) . ' permissions updated successfully.',
+                'data' => [
+                    'name' => $role->name,
+                    'permissions' => $role->permissions->pluck('name')->sort()->values(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to update role permissions.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
 
     public function assignUserRole(
         AssignUserRoleRequest $request,
         User $user
     ): JsonResponse {
-        $roleName = $request->validated('role');
-        $role = Role::findByName($roleName, 'sanctum');
+        try {
+            $roleName = $request->validated()['role'];
+            $role = Role::findByName($roleName, self::GUARD);
 
-        $user->syncRoles([$role->name]);
+            $user->syncRoles([$role]);
 
-        if (isset($user->role)) {
-            $user->role = $role->name;
-            $user->save();
+            if ($user->isFillable('role')) {
+                $user->role = $role->name;
+                $user->save();
+            }
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            return response()->json([
+                'message' => 'User role assigned successfully.',
+                'data' => [
+                    'user_id' => $user->user_id,
+                    'role' => $role->name,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Failed to assign user role.',
+                'error' => $e->getMessage(),
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'User role assigned successfully.',
-            'data' => [
-                'user_id' => $user->user_id,
-                'role' => $role->name,
-            ],
-        ]);
     }
 }

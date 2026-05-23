@@ -42,7 +42,7 @@ export function openBillingPrint(billing, currentStore, mode = 'receipt') {
       <div class="summary">
         <div>
           <div style="font-weight:700; margin-bottom:8px;">Bill To</div>
-          <div>${billing.customer?.full_name || 'Walk-in Customer'}</div>
+          <div>${billing.customer?.full_name || 'Customer'}</div>
           <div class="muted">${billing.customer?.phone || ''}</div>
           <div class="muted">${billing.customer?.email || ''}</div>
         </div>
@@ -78,8 +78,8 @@ export function openBillingPrint(billing, currentStore, mode = 'receipt') {
         <div><span>Subtotal</span><strong>${currency(billing.subtotal, currentStore?.currency || 'KES')}</strong></div>
         <div><span>VAT</span><strong>${currency(billing.vat_amount, currentStore?.currency || 'KES')}</strong></div>
         <div><span>Paid</span><strong>${currency(billing.paid_amount, currentStore?.currency || 'KES')}</strong></div>
+         <div class="grand"><span>Total</span><strong>${currency(billing.total, currentStore?.currency || 'KES')}</strong></div>
         <div class="grand"><span>Balance</span><strong>${currency(billing.balance_due, currentStore?.currency || 'KES')}</strong></div>
-        <div class="grand"><span>Total</span><strong>${currency(billing.total, currentStore?.currency || 'KES')}</strong></div>
       </div>
 
       ${payment ? `<p style="margin-top: 24px;"><strong>Payment:</strong> ${payment.payment_method.toUpperCase()} | Received ${currency(payment.amount_received, currentStore?.currency || 'KES')} | Change ${currency(payment.change_returned, currentStore?.currency || 'KES')}</p>` : ''}

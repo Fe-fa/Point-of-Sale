@@ -1,14 +1,33 @@
-import { ShieldCheck, Save, Users } from 'lucide-react';
+import { Save, ShieldCheck, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { accessControlService } from '../../services/accessControlService';
 
 const editableRoles = ['manager', 'cashier'];
+const assignableRoles = ['admin', 'manager', 'cashier'];
+
+function formatTitle(value = '') {
+  return value
+    .replaceAll('.', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function groupPermissions(permissions) {
+  return permissions.reduce((acc, permission) => {
+    const group = permission.name.includes('.')
+      ? permission.name.split('.')[0]
+      : 'general';
+
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(permission);
+    return acc;
+  }, {});
+}
 
 export default function AdminAccessControlPage() {
   const [permissions, setPermissions] = useState([]);
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [savingRole, setSavingRole] = useState('');
   const [savingUser, setSavingUser] = useState('');
   const [error, setError] = useState('');
@@ -20,10 +39,11 @@ export default function AdminAccessControlPage() {
     setSuccess('');
 
     try {
-      const response = await accessControlService.index();
-      setPermissions(response.data?.permissions || []);
-      setRoles(response.data?.roles || []);
-      setUsers(response.data?.users || []);
+      const data = await accessControlService.index();
+
+      setPermissions(Array.isArray(data.permissions) ? data.permissions : []);
+      setRoles(Array.isArray(data.roles) ? data.roles : []);
+      setUsers(Array.isArray(data.users) ? data.users : []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load access control data.');
     } finally {
@@ -42,16 +62,25 @@ export default function AdminAccessControlPage() {
     }, {});
   }, [roles]);
 
+  const permissionGroups = useMemo(() => groupPermissions(permissions), [permissions]);
+
   const toggleRolePermission = (roleName, permissionName) => {
     setRoles((prev) =>
       prev.map((role) => {
         if (role.name !== roleName) return role;
 
         const current = new Set(role.permissions || []);
-        if (current.has(permissionName)) current.delete(permissionName);
-        else current.add(permissionName);
 
-        return { ...role, permissions: Array.from(current) };
+        if (current.has(permissionName)) {
+          current.delete(permissionName);
+        } else {
+          current.add(permissionName);
+        }
+
+        return {
+          ...role,
+          permissions: Array.from(current).sort(),
+        };
       })
     );
   };
@@ -65,10 +94,19 @@ export default function AdminAccessControlPage() {
     setSuccess('');
 
     try {
-      await accessControlService.updateRolePermissions(roleName, {
+      const data = await accessControlService.updateRolePermissions(roleName, {
         permissions: role.permissions || [],
       });
-      setSuccess(`${roleName} permissions updated successfully.`);
+
+      setRoles((prev) =>
+        prev.map((item) =>
+          item.name === roleName
+            ? { ...item, permissions: data?.data?.permissions || role.permissions || [] }
+            : item
+        )
+      );
+
+      setSuccess(`${formatTitle(roleName)} permissions updated successfully.`);
     } catch (err) {
       setError(err?.response?.data?.message || `Unable to update ${roleName} permissions.`);
     } finally {
@@ -77,6 +115,11 @@ export default function AdminAccessControlPage() {
   };
 
   const handleUserRoleChange = async (userId, roleName) => {
+    if (!roleName) return;
+
+    const existingUser = users.find((user) => user.user_id === userId);
+    if (existingUser?.role === roleName) return;
+
     setSavingUser(String(userId));
     setError('');
     setSuccess('');
@@ -104,7 +147,7 @@ export default function AdminAccessControlPage() {
         <div className="catalog-hero-copy">
           <h2 className="catalog-title">Roles & Permissions</h2>
           <p className="catalog-subtitle">
-            Manage manager/cashier permissions and assign roles to users.
+            System admin can configure manager and cashier permissions, then assign roles to users.
           </p>
         </div>
       </div>
@@ -118,14 +161,14 @@ export default function AdminAccessControlPage() {
             <div>
               <h3>
                 <ShieldCheck size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-                Role templates
+                Role permission templates
               </h3>
-              <p>Edit permissions for manager and cashier.</p>
+              <p>Only manager and cashier permission sets are editable by the system admin.</p>
             </div>
           </div>
 
           {loading ? (
-            <p className="muted">Loading roles...</p>
+            <p className="muted">Loading role permissions...</p>
           ) : (
             <div className="stack-lg">
               {editableRoles.map((roleName) => {
@@ -133,10 +176,12 @@ export default function AdminAccessControlPage() {
 
                 return (
                   <div key={roleName} className="access-role-card">
-                    <div className="card-header">
+                    <div className="access-role-topbar">
                       <div>
-                        <h3 style={{ textTransform: 'capitalize' }}>{roleName}</h3>
-                        <p>{(role?.permissions || []).length} permissions selected</p>
+                        <h3 className="access-role-title">{formatTitle(roleName)}</h3>
+                        <p className="muted">
+                          {(role?.permissions || []).length} permissions selected
+                        </p>
                       </div>
 
                       <button
@@ -150,25 +195,45 @@ export default function AdminAccessControlPage() {
                       </button>
                     </div>
 
-                    <div className="selection-grid">
-                      {permissions.map((permission) => {
-                        const checked = roleMap[roleName]?.has(permission.name) || false;
-
-                        return (
-                          <label key={`${roleName}-${permission.name}`} className="selection-card">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleRolePermission(roleName, permission.name)}
-                            />
-                            <div className="permission-meta">
-                              <strong>{permission.name}</strong>
-                              <span>{permission.label || 'Permission access'}</span>
+                    {!permissions.length ? (
+                      <p className="muted">No permissions available.</p>
+                    ) : (
+                      <div className="stack-md">
+                        {Object.entries(permissionGroups).map(([groupName, groupItems]) => (
+                          <div key={`${roleName}-${groupName}`} className="permission-group-card">
+                            <div className="permission-group-header">
+                              <strong>{formatTitle(groupName)}</strong>
+                              <span>{groupItems.length} available</span>
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
+
+                            <div className="selection-grid access-permission-grid">
+                              {groupItems.map((permission) => {
+                                const checked = roleMap[roleName]?.has(permission.name) || false;
+
+                                return (
+                                  <label
+                                    key={`${roleName}-${permission.name}`}
+                                    className="selection-card"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() =>
+                                        toggleRolePermission(roleName, permission.name)
+                                      }
+                                    />
+                                    <div className="permission-meta">
+                                      <strong>{permission.label || permission.name}</strong>
+                                      <span>{permission.name}</span>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -207,7 +272,7 @@ export default function AdminAccessControlPage() {
                       <tr key={user.user_id}>
                         <td>
                           <div className="catalog-item-copy">
-                            <strong>{user.full_name || user.name || 'Unnamed user'}</strong>
+                            <strong>{user.full_name || 'Unnamed user'}</strong>
                             <span>ID #{user.user_id}</span>
                           </div>
                         </td>
@@ -218,7 +283,11 @@ export default function AdminAccessControlPage() {
                             : 'No assigned stores'}
                         </td>
                         <td>
-                          <span className={`status-badge ${user.role === 'admin' ? 'paid' : 'draft'}`}>
+                          <span
+                            className={`status-badge ${
+                              user.role === 'admin' ? 'paid' : 'draft'
+                            }`}
+                          >
                             {user.role || 'No role'}
                           </span>
                         </td>
@@ -229,16 +298,23 @@ export default function AdminAccessControlPage() {
                             onChange={(e) => handleUserRoleChange(user.user_id, e.target.value)}
                             disabled={savingUser === String(user.user_id)}
                           >
-                            <option value="admin">admin</option>
-                            <option value="manager">manager</option>
-                            <option value="cashier">cashier</option>
+                            <option value="" disabled>
+                              Select role
+                            </option>
+                            {assignableRoles.map((roleName) => (
+                              <option key={`${user.user_id}-${roleName}`} value={roleName}>
+                                {roleName}
+                              </option>
+                            ))}
                           </select>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="5">No users found.</td>
+                      <td colSpan="5" className="catalog-empty-cell">
+                        No users found.
+                      </td>
                     </tr>
                   )}
                 </tbody>

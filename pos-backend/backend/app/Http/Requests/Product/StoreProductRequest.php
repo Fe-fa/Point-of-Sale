@@ -42,4 +42,17 @@ class StoreProductRequest extends FormRequest
             'clear_image' => filter_var($this->input('clear_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false,
         ]);
     }
+    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+{
+    // Log the actual input for debugging
+    \Log::error('Validation Failed:', [
+        'errors' => $validator->errors()->toArray(),
+        'all_input' => $this->all(),
+        'files' => $this->allFiles() // This shows exactly what files were detected
+    ]);
+
+    throw new \Illuminate\Http\Exceptions\HttpResponseException(
+        response()->json(['errors' => $validator->errors()], 422)
+    );
+}
 }
