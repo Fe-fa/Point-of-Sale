@@ -38,11 +38,12 @@ class ProductService
 
     public function paginate(User $user, array $filters = []): LengthAwarePaginator
     {
-        $perPage = (int)($filters['per_page'] ?? 15);
+        $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = Product::query()
             ->with(['category'])
             ->withCount('inventories')
+            ->withSum('inventories as total_stock', 'quantity')
             ->orderByDesc('product_id');
 
         if (!$user->isAdmin()) {
@@ -56,9 +57,10 @@ class ProductService
 
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
+
             $query->where(function ($q) use ($search) {
                 $q->where('product_name', 'like', "%{$search}%")
-                  ->orWhere('sku', 'like', "%{$search}%");
+                    ->orWhere('sku', 'like', "%{$search}%");
             });
         }
 
@@ -73,43 +75,50 @@ class ProductService
         return $query->paginate($perPage);
     }
 
-public function create(User $user, array $data): Product
-{
-    $this->authorizeStoreAccess($user, $data['store_id']);
+    public function create(User $user, array $data): Product
+    {
+        $this->authorizeStoreAccess($user, $data['store_id']);
 
-    $category = Category::query()->findOrFail($data['category_id']);
+        $category = Category::query()->findOrFail($data['category_id']);
 
-    if ((string) $category->store_id !== (string) $data['store_id']) {
-        abort(response()->json([
-            'message' => 'Selected category does not belong to the selected store.',
-        ], 422));
+        if ((string) $category->store_id !== (string) $data['store_id']) {
+            abort(response()->json([
+                'message' => 'Selected category does not belong to the selected store.',
+            ], 422));
+        }
+
+        $imageValue = $this->resolveImageValue($data, null);
+
+        $productData = [
+            'store_id'      => $data['store_id'],
+            'category_id'   => $data['category_id'],
+            'sku'           => $data['sku'],
+            'product_name'  => $data['product_name'],
+            'price'         => $data['price'],
+            'cost_price'    => $data['cost_price'],
+            'vat_rate'      => $data['vat_rate'] ?? 0,
+            'image_url'     => $imageValue,
+            'is_active'     => isset($data['is_active'])
+                ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
+                : true,
+        ];
+
+        return Product::create($productData)
+            ->load('category')
+            ->loadSum('inventories as total_stock', 'quantity');
     }
-
-    // This resolves the file or URL to a string path/URL
-    $imageValue = $this->resolveImageValue($data, null);
-
-    // Prepare data for mass assignment
-    $productData = [
-        'store_id'      => $data['store_id'],
-        'category_id'   => $data['category_id'],
-        'sku'           => $data['sku'],
-        'product_name'  => $data['product_name'],
-        'price'         => $data['price'],
-        'cost_price'    => $data['cost_price'],
-        'vat_rate'      => $data['vat_rate'] ?? 0,
-        'image_url'     => $imageValue, // This is now a string or null
-        'is_active'     => isset($data['is_active'])
-            ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
-            : true,
-    ];
-
-    return Product::create($productData)->load('category');
-}
 
     public function show(User $user, Product $product): Product
     {
         $this->authorizeStoreAccess($user, $product->store_id);
-        return $product->load(['category', 'inventories.store']);
+
+        return $product->load([
+            'category',
+            'inventories' => fn ($query) => $query
+                ->with('store')
+                ->orderBy('created_at')
+                ->orderBy('inventory_id'),
+        ])->loadSum('inventories as total_stock', 'quantity');
     }
 
     public function update(User $user, Product $product, array $data): Product
@@ -154,7 +163,9 @@ public function create(User $user, array $data): Product
 
         $product->update($updateData);
 
-        return $product->fresh()->load('category');
+        return $product->fresh()
+            ->load('category')
+            ->loadSum('inventories as total_stock', 'quantity');
     }
 
     public function delete(User $user, Product $product): void

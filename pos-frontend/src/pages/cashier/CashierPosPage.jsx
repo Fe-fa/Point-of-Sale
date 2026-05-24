@@ -402,10 +402,6 @@ const addOrIncrementProduct = async (product) => {
     setSuccess('');
     setSubmitting(true);
 
-      //  setTimeout(() => {
-      //   setSuccess('');
-      // }, 4000);
-
     try {
       const updatedBilling = await addOrIncrementProduct(product);
       openPaymentModalForBilling(updatedBilling);
@@ -624,7 +620,7 @@ const handleSaveOrUpdateDraft = async () => {
   };
 
   const handleDeleteDraft = async (draftId) => {
-    const confirmed = window.confirm('Delete this draft permanently?');
+    const confirmed = window.confirm('Move this draft to trash?');
     if (!confirmed) return;
 
     setError('');
@@ -639,7 +635,7 @@ const handleSaveOrUpdateDraft = async () => {
       }
 
       removeDraftPreview(draftId);
-      setSuccess('Draft deleted successfully.');
+      setSuccess('Draft moved to trash successfully.');
       focusSearchInput();
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to delete draft.');
@@ -683,7 +679,7 @@ const handleSaveOrUpdateDraft = async () => {
 
       resetSale();
       setSearch('');
-      setSuccess('Current sale cleared.');
+      setSuccess('Current sale moved to trash.');
       focusSearchInput(true);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to cancel current sale.');

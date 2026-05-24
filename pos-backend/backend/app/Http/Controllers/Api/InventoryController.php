@@ -68,4 +68,27 @@ class InventoryController extends Controller
             'message' => 'Inventory deleted successfully.',
         ]);
     }
+
+    public function consumeFifo(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'store_id'   => ['required', 'exists:stores,store_id'],
+            'product_id' => ['required', 'exists:products,product_id'],
+            'quantity'   => ['required', 'integer', 'min:1'],
+            'reference'  => ['nullable', 'string', 'max:100'],
+            'reason'     => ['nullable', 'string', 'max:255'],
+        ]);
+
+        return response()->json([
+            'message' => 'Inventory consumed successfully using FIFO.',
+            'data'    => $this->service->consumeFifo(
+                user: $request->user(),
+                storeId: (int) $data['store_id'],
+                productId: (int) $data['product_id'],
+                quantity: (int) $data['quantity'],
+                reason: $data['reason'] ?? 'FIFO stock out',
+                reference: $data['reference'] ?? null,
+            ),
+        ]);
+    }
 }

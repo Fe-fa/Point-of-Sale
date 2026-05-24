@@ -16,7 +16,11 @@ class PaymentController extends Controller
     {
         return response()->json([
             'message' => 'Payment recorded successfully.',
-            'data' => $this->service->charge($billing, $request->user(), $request->validated()),
+            'data'    => $this->service->charge(
+                $billing,
+                $request->user(),
+                $request->validated()
+            ),
         ], 201);
     }
 }

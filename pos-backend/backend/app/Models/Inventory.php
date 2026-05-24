@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -41,5 +42,15 @@ class Inventory extends Model
     public function histories(): HasMany
     {
         return $this->hasMany(InventoryHistory::class, 'inventory_id', 'inventory_id');
+    }
+
+    public function scopeAvailable(Builder $query): Builder
+    {
+        return $query->where('quantity', '>', 0);
+    }
+
+    public function scopeFifo(Builder $query): Builder
+    {
+        return $query->orderBy('created_at')->orderBy('inventory_id');
     }
 }

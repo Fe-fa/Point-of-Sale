@@ -154,15 +154,14 @@ export default function AdminDashboardPage() {
           .sort((a, b) => new Date(b.billing_date || 0) - new Date(a.billing_date || 0))
           .slice(0, 8);
 
-        const revenue = allBillings
-          .filter((item) => paidStatuses.includes(item.status))
-          .reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
+        // 👇 FIX 1: Filter unified baseline dataset for paid metrics calculation
+        const paidOrders = allBillings.filter((item) => paidStatuses.includes(item.status));
 
-        const successfulOrders = allBillings.filter((item) => item.status !== 'draft');
-        const avgTicket =
-          successfulOrders.length > 0
-            ? successfulOrders.reduce((sum, item) => sum + Number(item.total || 0), 0) /
-              successfulOrders.length
+        const revenue = paidOrders.reduce((sum, item) => sum + Number(item.paid_amount || 0), 0);
+
+        // 👇 FIX 2: Calculate average using matching records
+        const avgTicket = paidOrders.length > 0
+            ? revenue / paidOrders.length
             : 0;
 
         const outstanding = allBillings.filter((item) => Number(item.balance_due || 0) > 0).length;
@@ -184,7 +183,7 @@ export default function AdminDashboardPage() {
               store_name: store.store_name,
               location: store.location || store.physical_address || '—',
               revenue: storeRevenue,
-              orders: storeBillings.length,
+              orders: storeBillings.filter((item) => item.status !== 'draft').length, // Exclude drafts from total count
               outstanding: storeBillings.filter((item) => Number(item.balance_due || 0) > 0).length,
               lowStock: storeInventory.filter(
                 (item) => Number(item.quantity || 0) <= Number(item.reorder_level || 0)
@@ -209,7 +208,7 @@ export default function AdminDashboardPage() {
           storePerformance,
           last7Days,
           revenue,
-          orders: allBillings.length,
+          orders: paidOrders.length, // 👇 FIX 3: Display total successful payments count (20 instead of 30)
           avgTicket,
           outstanding,
         });
@@ -219,7 +218,8 @@ export default function AdminDashboardPage() {
     }
 
     loadDashboard();
-  }, [isAdmin, storeId, stores]);
+    // 👇 Added activeStore to dependencies array to refresh on store swap toggle
+  }, [isAdmin, storeId, stores, activeStore]); 
 
   const currentCurrency = activeStore?.currency || stores?.[0]?.currency || 'KES';
 

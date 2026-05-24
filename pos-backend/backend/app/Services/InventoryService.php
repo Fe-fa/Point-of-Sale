@@ -13,11 +13,13 @@ class InventoryService
 {
     public function paginate(User $user, array $filters = []): LengthAwarePaginator
     {
-        $perPage = (int)($filters['per_page'] ?? 15);
+        $perPage = (int) ($filters['per_page'] ?? 15);
 
         $query = Inventory::query()
             ->with(['store', 'product.category'])
-            ->orderByDesc('inventory_id');
+            ->orderBy('product_id')
+            ->orderBy('created_at')
+            ->orderBy('inventory_id');
 
         if (!$user->isAdmin() && !$user->can('stores.manage')) {
             $storeIds = $user->stores()->pluck('stores.store_id')
@@ -34,6 +36,7 @@ class InventoryService
 
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
+
             $query->where(function ($q) use ($search) {
                 $q->whereHas('product', function ($pq) use ($search) {
                     $pq->where('product_name', 'like', "%{$search}%")
@@ -47,7 +50,7 @@ class InventoryService
 
     public function paginateHistory(User $user, array $filters = []): LengthAwarePaginator
     {
-        $perPage = (int)($filters['per_page'] ?? 25);
+        $perPage = (int) ($filters['per_page'] ?? 25);
 
         $query = InventoryHistory::query()
             ->with(['store', 'product', 'user'])
@@ -76,13 +79,14 @@ class InventoryService
 
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
+
             $query->where(function ($q) use ($search) {
                 $q->whereHas('product', function ($pq) use ($search) {
                     $pq->where('product_name', 'like', "%{$search}%")
                         ->orWhere('sku', 'like', "%{$search}%");
                 })
-                    ->orWhere('batch_no', 'like', "%{$search}%")
-                    ->orWhere('reference', 'like', "%{$search}%");
+                ->orWhere('batch_no', 'like', "%{$search}%")
+                ->orWhere('reference', 'like', "%{$search}%");
             });
         }
 
@@ -92,61 +96,22 @@ class InventoryService
     public function create(User $user, array $data): Inventory
     {
         return DB::transaction(function () use ($user, $data) {
-            $batchNo = isset($data['batch_no']) ? trim($data['batch_no']) : null;
-            $batchNo = $batchNo === '' ? null : $batchNo;
-
-            // Find existing stock line for same store + product + batch_no
-            $existing = Inventory::query()
-                ->where('store_id', $data['store_id'])
-                ->where('product_id', $data['product_id'])
-                ->where(function ($q) use ($batchNo) {
-                    if ($batchNo === null) {
-                        $q->whereNull('batch_no');
-                    } else {
-                        $q->where('batch_no', $batchNo);
-                    }
-                })
-                ->lockForUpdate()
-                ->first();
-
+            $batchNo = $this->normalizeBatchNo($data['batch_no'] ?? null);
             $incomingQty = (int) $data['quantity'];
 
-            if ($existing) {
-                $before = (int) $existing->quantity;
-                $after  = $before + $incomingQty;
-
-                $existing->update([
-                    'quantity'      => $after,
-                    'reorder_level' => $data['reorder_level'] ?? $existing->reorder_level,
-                ]);
-
-                $this->logHistory(
-                    inventory: $existing,
-                    user: $user,
-                    quantityBefore: $before,
-                    quantityChanged: $incomingQty,
-                    quantityAfter: $after,
-                    changeType: 'stock_in',
-                    reason: 'Stock received (merged into existing batch)',
-                    reference: $batchNo
-                );
-
-                // Optional: legacy stock movements table
-                if ($incomingQty !== 0 && class_exists(StockMovement::class)) {
-                    StockMovement::create([
-                        'product_id' => $existing->product_id,
-                        'store_id'   => $existing->store_id,
-                        'quantity'   => $incomingQty,
-                        'type'       => 'stock_in',
-                        'reason'     => 'Stock received',
-                        'user_id'    => $user->user_id,
-                    ]);
-                }
-
-                return $existing->fresh()->load(['store', 'product.category']);
+            if ($incomingQty <= 0) {
+                abort(response()->json([
+                    'message' => 'Incoming quantity must be greater than zero.',
+                ], 422));
             }
 
-            // No existing row → create fresh
+            $hasExistingLayers = Inventory::query()
+                ->where('store_id', $data['store_id'])
+                ->where('product_id', $data['product_id'])
+                ->lockForUpdate()
+                ->exists();
+
+            // FIFO: always create a NEW layer for every receipt
             $inventory = Inventory::create([
                 'store_id'      => $data['store_id'],
                 'product_id'    => $data['product_id'],
@@ -155,48 +120,170 @@ class InventoryService
                 'reorder_level' => $data['reorder_level'] ?? 0,
             ]);
 
-            if ($incomingQty > 0) {
-                $this->logHistory(
-                    inventory: $inventory,
-                    user: $user,
-                    quantityBefore: 0,
-                    quantityChanged: $incomingQty,
-                    quantityAfter: $incomingQty,
-                    changeType: 'opening_stock',
-                    reason: 'Opening stock',
-                    reference: $batchNo
-                );
+            $changeType = $hasExistingLayers ? 'stock_in' : 'opening_stock';
+            $reason = $hasExistingLayers ? 'Stock received (new FIFO layer)' : 'Opening stock';
 
-                if (class_exists(StockMovement::class)) {
-                    StockMovement::create([
-                        'product_id' => $inventory->product_id,
-                        'store_id'   => $inventory->store_id,
-                        'quantity'   => $inventory->quantity,
-                        'type'       => 'opening_stock',
-                        'reason'     => 'Opening stock',
-                        'user_id'    => $user->user_id,
-                    ]);
-                }
+            $this->logHistory(
+                inventory: $inventory,
+                user: $user,
+                quantityBefore: 0,
+                quantityChanged: $incomingQty,
+                quantityAfter: $incomingQty,
+                changeType: $changeType,
+                reason: $reason,
+                reference: $batchNo
+            );
+
+            if (class_exists(StockMovement::class)) {
+                StockMovement::create([
+                    'product_id' => $inventory->product_id,
+                    'store_id'   => $inventory->store_id,
+                    'quantity'   => $incomingQty,
+                    'type'       => $changeType,
+                    'reason'     => $reason,
+                    'user_id'    => $user->user_id,
+                ]);
             }
 
             return $inventory->load(['store', 'product.category']);
         });
     }
 
+    public function consumeFifo(
+        User $user,
+        int $storeId,
+        int $productId,
+        int $quantity,
+        ?string $reason = null,
+        ?string $reference = null,
+    ): array {
+        return DB::transaction(function () use ($user, $storeId, $productId, $quantity, $reason, $reference) {
+            if ($quantity <= 0) {
+                abort(response()->json([
+                    'message' => 'Quantity must be greater than zero.',
+                ], 422));
+            }
+
+            $layers = Inventory::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $productId)
+                ->available()
+                ->fifo()
+                ->lockForUpdate()
+                ->get();
+
+            $availableQty = (int) $layers->sum('quantity');
+
+            if ($availableQty < $quantity) {
+                abort(response()->json([
+                    'message' => 'Insufficient stock for FIFO consumption.',
+                    'available_quantity' => $availableQty,
+                    'requested_quantity' => $quantity,
+                ], 422));
+            }
+
+            $remaining = $quantity;
+            $consumedLayers = [];
+
+            foreach ($layers as $layer) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $before = (int) $layer->quantity;
+                $take = min($before, $remaining);
+                $after = $before - $take;
+
+                $layer->update([
+                    'quantity' => $after,
+                ]);
+
+                $this->logHistory(
+                    inventory: $layer,
+                    user: $user,
+                    quantityBefore: $before,
+                    quantityChanged: -$take,
+                    quantityAfter: $after,
+                    changeType: 'stock_out',
+                    reason: $reason ?? 'FIFO stock out',
+                    reference: $reference
+                );
+
+                $consumedLayers[] = [
+                    'inventory_id'    => $layer->inventory_id,
+                    'batch_no'        => $layer->batch_no,
+                    'quantity_before' => $before,
+                    'quantity_taken'  => $take,
+                    'quantity_after'  => $after,
+                ];
+
+                $remaining -= $take;
+            }
+
+            if (class_exists(StockMovement::class)) {
+                StockMovement::create([
+                    'product_id' => $productId,
+                    'store_id'   => $storeId,
+                    'quantity'   => -$quantity,
+                    'type'       => 'stock_out',
+                    'reason'     => $reason ?? 'FIFO stock out',
+                    'user_id'    => $user->user_id,
+                ]);
+            }
+
+            $remainingTotal = (int) Inventory::query()
+                ->where('store_id', $storeId)
+                ->where('product_id', $productId)
+                ->sum('quantity');
+
+            return [
+                'store_id'           => $storeId,
+                'product_id'         => $productId,
+                'requested_quantity' => $quantity,
+                'consumed_quantity'  => $quantity,
+                'remaining_quantity' => $remainingTotal,
+                'layers'             => $consumedLayers,
+            ];
+        });
+    }
+
     public function show(Inventory $inventory): Inventory
     {
-        return $inventory->load(['store', 'product.category', 'histories.user']);
+        return $inventory->load([
+            'store',
+            'product.category',
+            'histories' => fn ($query) => $query
+                ->with('user')
+                ->orderByDesc('inventory_history_id'),
+        ]);
     }
 
     public function update(User $user, Inventory $inventory, array $data): Inventory
     {
         return DB::transaction(function () use ($user, $inventory, $data) {
+            $inventory = Inventory::query()
+                ->whereKey($inventory->inventory_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $newStoreId = $data['store_id'] ?? $inventory->store_id;
+            $newProductId = $data['product_id'] ?? $inventory->product_id;
+
+            if (
+                (string) $newStoreId !== (string) $inventory->store_id ||
+                (string) $newProductId !== (string) $inventory->product_id
+            ) {
+                abort(response()->json([
+                    'message' => 'Changing store or product on an existing FIFO layer is not allowed.',
+                ], 422));
+            }
+
             $oldQty = (int) $inventory->quantity;
             $newQty = (int) $data['quantity'];
-            $diff   = $newQty - $oldQty;
+            $diff = $newQty - $oldQty;
 
             $batchNo = array_key_exists('batch_no', $data)
-                ? (trim($data['batch_no']) === '' ? null : trim($data['batch_no']))
+                ? $this->normalizeBatchNo($data['batch_no'])
                 : $inventory->batch_no;
 
             $inventory->update([
@@ -213,7 +300,7 @@ class InventoryService
                     quantityChanged: $diff,
                     quantityAfter: $newQty,
                     changeType: 'adjustment',
-                    reason: 'Manual inventory update',
+                    reason: 'Manual inventory update (single FIFO layer)',
                     reference: $batchNo
                 );
 
@@ -223,7 +310,7 @@ class InventoryService
                         'store_id'   => $inventory->store_id,
                         'quantity'   => $diff,
                         'type'       => 'adjustment',
-                        'reason'     => 'Manual inventory update',
+                        'reason'     => 'Manual inventory update (single FIFO layer)',
                         'user_id'    => $user->user_id,
                     ]);
                 }
@@ -235,13 +322,24 @@ class InventoryService
 
     public function delete(Inventory $inventory): void
     {
-        if ((int)$inventory->quantity > 0) {
+        if ((int) $inventory->quantity > 0) {
             abort(response()->json([
                 'message' => 'Cannot delete inventory while quantity is above zero.',
             ], 422));
         }
 
         $inventory->delete();
+    }
+
+    private function normalizeBatchNo(?string $batchNo): ?string
+    {
+        if ($batchNo === null) {
+            return null;
+        }
+
+        $batchNo = trim($batchNo);
+
+        return $batchNo === '' ? null : $batchNo;
     }
 
     private function logHistory(

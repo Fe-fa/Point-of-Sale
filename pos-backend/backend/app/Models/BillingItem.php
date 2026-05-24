@@ -5,10 +5,11 @@ namespace App\Models;
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BillingItem extends Model
 {
-    use HasUuid;
+    use HasUuid, SoftDeletes;
 
     protected $table = 'billing_items';
     protected $primaryKey = 'billing_item_id';
@@ -32,6 +33,7 @@ class BillingItem extends Model
         'vat_rate' => 'decimal:2',
         'vat_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'deleted_at' => 'datetime',
     ];
 
     public function billing(): BelongsTo
@@ -43,8 +45,9 @@ class BillingItem extends Model
     {
         return $this->belongsTo(Product::class, 'product_id', 'product_id');
     }
+
     public function getRouteKeyName(): string
-{
-    return 'billing_item_id';
-}
+    {
+        return 'billing_item_id';
+    }
 }

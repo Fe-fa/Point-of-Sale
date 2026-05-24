@@ -6,20 +6,17 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->bigIncrements('user_id'); // primary key
-            $table->string('first_name')->nullable();
-            $table->string('last_name')->nullable();
+            $table->bigIncrements('user_id');
+            $table->string('first_name');
+            $table->string('last_name');
             $table->string('username')->unique();
             $table->string('email')->unique();
-            $table->string('phone')->nullable();
+            $table->string('phone', 30)->nullable();
             $table->string('password');
-            $table->string('role')->default('cashier'); // default role
+            $table->string('role')->nullable();
             $table->unsignedBigInteger('default_store_id')->nullable();
             $table->string('verification_code')->nullable();
             $table->timestamp('verification_expiry')->nullable();
@@ -29,15 +26,14 @@ return new class extends Migration
             $table->rememberToken();
             $table->timestamps();
 
-            // Foreign key to stores table
             $table->foreign('default_store_id')
-                  ->references('store_id')
-                  ->on('stores')
-                  ->onDelete('set null');
+                ->references('store_id')
+                ->on('stores')
+                ->nullOnDelete()
+                ->cascadeOnUpdate();
         });
     }
 
-        
     public function down(): void
     {
         Schema::dropIfExists('users');

@@ -28,11 +28,12 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/verify-email', [AuthController::class, 'verifyEmail'])->name('auth.verify');
         Route::post('/resend-verification', [AuthController::class, 'resendVerification'])->name('auth.resend');
     });
-Route::middleware('auth:sanctum')->prefix('access-control')->group(function () {
-    Route::get('/', [AccessControlController::class, 'index']);
-    Route::put('/roles/{roleName}/permissions', [AccessControlController::class, 'updateRolePermissions']);
-    Route::put('/users/{user}/role', [AccessControlController::class, 'assignUserRole']);
-});
+
+    Route::middleware('auth:sanctum')->prefix('access-control')->group(function () {
+        Route::get('/', [AccessControlController::class, 'index']);
+        Route::put('/roles/{roleName}/permissions', [AccessControlController::class, 'updateRolePermissions']);
+        Route::put('/users/{user}/role', [AccessControlController::class, 'assignUserRole']);
+    });
 
     Route::apiResource('stores', StoreController::class);
     Route::apiResource('users', UserController::class);
@@ -42,18 +43,21 @@ Route::middleware('auth:sanctum')->prefix('access-control')->group(function () {
     Route::apiResource('products', ProductController::class);
 
     Route::get('inventory/history', [InventoryController::class, 'history'])->name('inventory.history');
+    Route::post('inventory/consume-fifo', [InventoryController::class, 'consumeFifo'])->name('inventory.consume-fifo');
     Route::apiResource('inventory', InventoryController::class)->parameters([
         'inventory' => 'inventory',
     ]);
 
     Route::apiResource('customers', CustomerController::class);
-    Route::apiResource('billings', BillingController::class);
-    Route::apiResource('billing-items', BillingItemController::class);
+ Route::apiResource('billings', BillingController::class);
+Route::post('billings/{id}/restore', [BillingController::class, 'restore'])->name('billings.restore');
 
-    Route::get('billings/{billing}/items', [BillingItemController::class, 'index'])->name('billings.items.index');
-    Route::post('billings/{billing}/items', [BillingItemController::class, 'store'])->name('billings.items.store');
-    Route::put('billing-items/{billingItem}', [BillingItemController::class, 'update'])->name('billings.items.update');
-    Route::delete('billing-items/{billingItem}', [BillingItemController::class, 'destroy'])->name('billings.items.destroy');
+Route::apiResource('billing-items', BillingItemController::class);
+Route::post('billing-items/{id}/restore', [BillingItemController::class, 'restore'])->name('billing-items.restore');
 
-    Route::post('billings/{billing}/charge', [PaymentController::class, 'charge'])->name('billings.charge');
+Route::get('billings/{billing}/items', [BillingItemController::class, 'index'])->name('billings.items.index');
+Route::post('billings/{billing}/items', [BillingItemController::class, 'store'])->name('billings.items.store');
+
+Route::post('billings/{billing}/charge', [PaymentController::class, 'charge'])->name('billings.charge');
+
 });

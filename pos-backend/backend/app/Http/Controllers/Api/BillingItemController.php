@@ -9,18 +9,24 @@ use App\Models\Billing;
 use App\Models\BillingItem;
 use App\Services\BillingItemService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class BillingItemController extends Controller
 {
     public function __construct(private readonly BillingItemService $service) {}
 
-    public function index(Billing $billing): JsonResponse
+    public function index(Request $request, Billing $billing): JsonResponse
     {
         return response()->json([
             'message' => 'Billing items retrieved successfully.',
-            'data' => $this->service->getItems($billing),
+            'data' => $this->service->getItems(
+                $billing,
+                $request->boolean('with_trashed'),
+                $request->boolean('only_trashed')
+            ),
         ]);
     }
+
     public function store(StoreBillingItemRequest $request, Billing $billing): JsonResponse
     {
         return response()->json([
@@ -28,13 +34,18 @@ class BillingItemController extends Controller
             'data' => $this->service->addItem($billing, $request->validated()),
         ], 201);
     }
-    public function show(BillingItem $billingItem): JsonResponse
-{
-    return response()->json([
-        'message' => 'Billing item retrieved successfully.',
-        'data' => $billingItem,
-    ]);
-}
+
+    public function show(int $id): JsonResponse
+    {
+        $billingItem = BillingItem::withTrashed()
+            ->with(['product.category', 'billing'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'message' => 'Billing item retrieved successfully.',
+            'data' => $billingItem,
+        ]);
+    }
 
     public function update(UpdateBillingItemRequest $request, BillingItem $billingItem): JsonResponse
     {
@@ -43,12 +54,23 @@ class BillingItemController extends Controller
             'data' => $this->service->updateItem($billingItem, $request->validated()),
         ]);
     }
+
     public function destroy(BillingItem $billingItem): JsonResponse
     {
         $this->service->deleteItem($billingItem);
 
         return response()->json([
-            'message' => 'Billing item deleted successfully.',
+            'message' => 'Billing item moved to trash successfully.',
+        ]);
+    }
+
+    public function restore(int $id): JsonResponse
+    {
+        $billingItem = BillingItem::withTrashed()->findOrFail($id);
+
+        return response()->json([
+            'message' => 'Billing item restored successfully.',
+            'data' => $this->service->restoreItem($billingItem),
         ]);
     }
 }

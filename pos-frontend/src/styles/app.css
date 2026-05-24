@@ -588,15 +588,29 @@ img {
 }
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  /* 1. auto-fit ensures layout stretches dynamically if content needs more breathing space */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
 }
 
+.metrics-grid > div, 
 .metric-card {
-  padding: 18px;
-  display: grid;
-  gap: 12px;
-  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0; /* Prevents long textual content elements from inflating the card body width */
+  overflow: hidden; /* Secures structural integrity */
+  padding: 16px;
+}
+.metrics-grid strong,
+.metric-card-value {
+  font-size: clamp(1.2rem, 2.5vw, 1.75rem); /* Dynamically shrinks text text gracefully on smaller cards */
+  white-space: nowrap; 
+  text-overflow: ellipsis; /* Appends "..." gracefully if currency somehow scales past bounds */
+  overflow: hidden;
+  display: block;
+  max-width: 100%;
 }
 
 .metric-card-top {
@@ -2029,7 +2043,8 @@ textarea:focus {
 
 @media (max-width: 1180px) {
   .metrics-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .dashboard-grid,

@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Models\Billing;
-use App\Models\Inventory;
-use App\Models\StockMovement;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,7 +12,8 @@ class BillingService
 {
     public function __construct(
         private readonly DocumentNumberService $documentNumberService,
-        private readonly AuditLogService $auditLogService
+        private readonly AuditLogService $auditLogService,
+        private readonly InventoryService $inventoryService,
     ) {
     }
 
@@ -104,6 +103,14 @@ class BillingService
             ->with(['customer', 'store', 'user', 'payments'])
             ->withCount('items')
             ->orderByDesc('billing_id');
+
+        if (!empty($filters['with_trashed']) && filter_var($filters['with_trashed'], FILTER_VALIDATE_BOOLEAN)) {
+            $query->withTrashed();
+        }
+
+        if (!empty($filters['only_trashed']) && filter_var($filters['only_trashed'], FILTER_VALIDATE_BOOLEAN)) {
+            $query->onlyTrashed();
+        }
 
         $query = $this->scopeAccessible($query, $user);
 
@@ -203,11 +210,11 @@ class BillingService
     public function recalculateTotals(Billing $billing): Billing
     {
         $billing->load('items');
-        $subtotal = $billing->items->sum('line_subtotal');
-        $vatAmount = $billing->items->sum('vat_amount');
-        $total = $subtotal + $vatAmount;
 
-        $paidAmount = $billing->payments()->sum('amount_received');
+        $subtotal = (float) $billing->items->sum('line_subtotal');
+        $vatAmount = (float) $billing->items->sum('vat_amount');
+        $total = $subtotal + $vatAmount;
+        $paidAmount = (float) $billing->payments()->sum('amount_received');
         $balanceDue = max($total - $paidAmount, 0);
 
         $billing->update([
@@ -226,44 +233,44 @@ class BillingService
         $this->authorizeBillingAccess($billing, $user);
 
         return DB::transaction(function () use ($billing, $user) {
+            $billing = Billing::query()
+                ->whereKey($billing->billing_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             if ($billing->stock_applied_at) {
-                return $billing->fresh();
+                return $billing->fresh()->load(['customer', 'store', 'user', 'items.product', 'payments']);
             }
 
-            $billing->load('items.product');
+            $billing = $this->recalculateTotals($billing);
+            $billing->load(['items.product', 'payments']);
+
+            if ($billing->items->isEmpty()) {
+                abort(response()->json([
+                    'message' => 'Cannot finalize billing without items.',
+                ], 422));
+            }
+
+            $invoiceNumber = $billing->invnumber ?: $this->documentNumberService->nextNumber(
+                $billing->store_id,
+                'Invoice'
+            );
 
             foreach ($billing->items as $item) {
-                $inventory = Inventory::query()
-                    ->where('store_id', $billing->store_id)
-                    ->where('product_id', $item->product_id)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (!$inventory || $inventory->quantity < $item->quantity) {
-                    abort(response()->json([
-                        'message' => "Insufficient stock for {$item->product->product_name}.",
-                    ], 422));
-                }
-
-                $inventory->decrement('quantity', $item->quantity);
-
-                StockMovement::create([
-                    'product_id' => $item->product_id,
-                    'store_id' => $billing->store_id,
-                    'quantity' => -1 * $item->quantity,
-                    'type' => 'sale',
-                    'reason' => 'Billing finalized',
-                    'user_id' => $user->user_id,
-                ]);
+                $this->inventoryService->consumeFifo(
+                    user: $user,
+                    storeId: (int) $billing->store_id,
+                    productId: (int) $item->product_id,
+                    quantity: (int) $item->quantity,
+                    reason: 'Billing finalized sale',
+                    reference: $invoiceNumber
+                );
             }
 
             $billing->update([
                 'is_draft' => false,
-                'status' => 'unpaid',
-                'invnumber' => $billing->invnumber ?: $this->documentNumberService->nextNumber(
-                    $billing->store_id,
-                    'Invoice'
-                ),
+                'status' => ((float) $billing->balance_due <= 0) ? 'paid' : 'unpaid',
+                'invnumber' => $invoiceNumber,
                 'stock_applied_at' => now(),
             ]);
 
@@ -272,11 +279,11 @@ class BillingService
                 $billing,
                 null,
                 $billing->fresh()->toArray(),
-                ['message' => 'Draft converted to live billing'],
+                ['message' => 'Draft converted to live billing using FIFO stock deduction'],
                 $billing->store_id
             );
 
-            return $billing->fresh()->load(['items.product', 'payments']);
+            return $billing->fresh()->load(['customer', 'store', 'user', 'items.product', 'payments']);
         });
     }
 
@@ -298,7 +305,6 @@ class BillingService
 
         $old = $billing->load('items')->toArray();
 
-        $billing->items()->delete();
         $billing->delete();
 
         $this->auditLogService->log(
@@ -306,8 +312,34 @@ class BillingService
             null,
             $old,
             null,
-            ['message' => 'Billing deleted'],
+            ['message' => 'Billing soft deleted'],
             $old['store_id'] ?? null
         );
+    }
+
+    public function restore(int|string $billingId, User $user): Billing
+    {
+        $billing = Billing::onlyTrashed()->find($billingId);
+
+        if (!$billing) {
+            abort(response()->json([
+                'message' => "Billing record #{$billingId} was not found in trash.",
+            ], 404));
+        }
+
+        $this->authorizeBillingAccess($billing, $user);
+
+        $billing->restore();
+
+        $this->auditLogService->log(
+            'billing.restore',
+            $billing,
+            null,
+            $billing->fresh()->toArray(),
+            ['message' => 'Billing restored'],
+            $billing->store_id
+        );
+
+        return $billing->fresh()->load(['customer', 'store', 'user', 'items.product', 'payments']);
     }
 }

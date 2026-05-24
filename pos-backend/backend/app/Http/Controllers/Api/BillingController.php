@@ -20,7 +20,7 @@ class BillingController extends Controller
             'message' => 'Billings retrieved successfully.',
             'data' => $this->service->paginate(
                 $request->user(),
-                $request->only('store_id', 'status', 'is_draft', 'per_page')
+                $request->only('store_id', 'status', 'is_draft', 'per_page', 'with_trashed', 'only_trashed')
             ),
         ]);
     }
@@ -75,5 +75,12 @@ class BillingController extends Controller
             'message' => 'Billing deleted successfully.',
         ]);
     }
-    
+
+    public function restore(Request $request, $id): JsonResponse
+    {
+        return response()->json([
+            'message' => 'Billing restored successfully.',
+            'data' => $this->service->restore($id, $request->user()),
+        ]);
+    }
 }

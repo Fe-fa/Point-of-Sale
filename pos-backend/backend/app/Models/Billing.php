@@ -4,12 +4,13 @@ namespace App\Models;
 
 use App\Models\Concerns\HasUuid;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Billing extends Model
 {
-    use HasUuid;
+    use HasUuid, SoftDeletes;
 
     protected $table = 'billing';
     protected $primaryKey = 'billing_id';
@@ -41,6 +42,7 @@ class Billing extends Model
         'is_draft' => 'boolean',
         'stock_applied_at' => 'datetime',
         'billing_date' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     protected static function boot()
@@ -49,7 +51,7 @@ class Billing extends Model
 
         static::creating(function ($model) {
             if (empty($model->invnumber)) {
-                $lastId = Billing::max('billing_id') ?? 0;
+                $lastId = Billing::withTrashed()->max('billing_id') ?? 0;
                 $model->invnumber = 'INV-' . str_pad($lastId + 1, 4, '0', STR_PAD_LEFT);
             }
         });
@@ -79,8 +81,9 @@ class Billing extends Model
     {
         return $this->hasMany(Payment::class, 'billing_id', 'billing_id');
     }
+
     public function getRouteKeyName()
-{
-    return 'billing_id';
-}
+    {
+        return 'billing_id';
+    }
 }

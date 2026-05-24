@@ -411,7 +411,8 @@ export default function AdminInventoryPage() {
                 <p className="muted">
                   {editingId
                     ? 'Update quantity, reorder threshold, and batch number.'
-                    : 'If product + batch already exists, quantity will be added to the current stock.'}
+                    : 'Each stock receipt creates a new FIFO inventory layer.'
+}
                 </p>
               </div>
 

@@ -30,10 +30,10 @@ class BillingItemService
             ], 422));
         }
 
-        $qty = (int)$data['quantity'];
-        $unitPrice = (float)($data['unit_price'] ?? $product->price);
+        $qty = (int) $data['quantity'];
+        $unitPrice = (float) ($data['unit_price'] ?? $product->price);
         $lineSubtotal = $qty * $unitPrice;
-        $vatRate = (float)$product->vat_rate;
+        $vatRate = (float) $product->vat_rate;
         $vatAmount = $lineSubtotal * ($vatRate / 100);
         $totalAmount = $lineSubtotal + $vatAmount;
 
@@ -48,7 +48,7 @@ class BillingItemService
             'total_amount' => $totalAmount,
         ]);
 
-        $this->billingService->recalculateTotals($billing);
+        $this->billingService->recalculateTotals($billing->fresh());
 
         $this->auditLogService->log(
             'billing_item.create',
@@ -72,13 +72,19 @@ class BillingItemService
             ], 422));
         }
 
+        if ($item->trashed()) {
+            abort(response()->json([
+                'message' => 'Cannot update a trashed billing item.',
+            ], 422));
+        }
+
         $old = $item->toArray();
 
         $product = $item->product;
-        $qty = (int)$data['quantity'];
-        $unitPrice = (float)($data['unit_price'] ?? $item->unit_price);
+        $qty = (int) $data['quantity'];
+        $unitPrice = (float) ($data['unit_price'] ?? $item->unit_price);
         $lineSubtotal = $qty * $unitPrice;
-        $vatRate = (float)$product->vat_rate;
+        $vatRate = (float) $product->vat_rate;
         $vatAmount = $lineSubtotal * ($vatRate / 100);
         $totalAmount = $lineSubtotal + $vatAmount;
 
@@ -90,7 +96,9 @@ class BillingItemService
             'vat_amount' => $vatAmount,
             'total_amount' => $totalAmount,
         ]);
-        $this->billingService->recalculateTotals($billing);
+
+        $this->billingService->recalculateTotals($billing->fresh());
+
         $this->auditLogService->log(
             'billing_item.update',
             $item,
@@ -99,42 +107,95 @@ class BillingItemService
             ['billing_uuid' => $billing->uuid],
             $billing->store_id
         );
+
         return $item->fresh()->load('product.category');
     }
+
     public function deleteItem(BillingItem $item): void
     {
         $billing = $item->billing;
+
         if (!$billing->is_draft && $billing->payments()->exists()) {
             abort(response()->json([
                 'message' => 'Cannot delete items after payment has started.',
             ], 422));
         }
+
+        if ($item->trashed()) {
+            return;
+        }
+
         $old = $item->toArray();
+
         $item->delete();
 
-        $this->billingService->recalculateTotals($billing);
+        $this->billingService->recalculateTotals($billing->fresh());
 
         $this->auditLogService->log(
             'billing_item.delete',
-            null,
+            $item,
             $old,
             null,
             ['billing_uuid' => $billing->uuid],
             $billing->store_id
         );
     }
-    public function getItems(Billing $billing)
+
+    public function restoreItem(BillingItem $item): BillingItem
     {
-        $items = $billing->items()->with('product.category')->get();
+        if (!$item->trashed()) {
+            return $item->load('product.category');
+        }
+
+        $billing = Billing::query()->findOrFail($item->billing_id);
+
+        if (!$billing->is_draft && $billing->payments()->exists()) {
+            abort(response()->json([
+                'message' => 'Cannot restore items after payment has started.',
+            ], 422));
+        }
+
+        $item->restore();
+
+        $this->billingService->recalculateTotals($billing->fresh());
+
+        $this->auditLogService->log(
+            'billing_item.restore',
+            $item->fresh(),
+            null,
+            $item->fresh()->toArray(),
+            ['billing_uuid' => $billing->uuid],
+            $billing->store_id
+        );
+
+        return $item->fresh()->load('product.category');
+    }
+
+    public function getItems(Billing $billing, bool $withTrashed = false, bool $onlyTrashed = false)
+    {
+        $query = $billing->items()->with('product.category');
+
+        if ($onlyTrashed) {
+            $query->onlyTrashed();
+        } elseif ($withTrashed) {
+            $query->withTrashed();
+        }
+
+        $items = $query->get();
 
         $this->auditLogService->log(
             'billing_item.view',
             $billing,
             null,
             null,
-            ['items_count' => $items->count()],
+            [
+                'items_count' => $items->count(),
+                'with_trashed' => $withTrashed,
+                'only_trashed' => $onlyTrashed,
+            ],
             $billing->store_id
         );
+
         return $items;
     }
 }
