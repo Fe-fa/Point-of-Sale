@@ -1,100 +1,430 @@
+import JsBarcode from 'jsbarcode';
 import { currency, formatDateTime } from './helpers';
 
-export function openBillingPrint(billing, currentStore, mode = 'receipt') {
+const escapeHtml = (value = '') =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+function groupVatSummary(items = []) {
+  const summary = {};
+
+  items.forEach((item) => {
+    const rate = Number(item.vat_rate || 0);
+    const total = Number(item.total_amount || 0);
+    const net = rate > 0 ? total / (1 + rate / 100) : total;
+    const vat = total - net;
+    const key = `${rate}`;
+
+    if (!summary[key]) {
+      summary[key] = {
+        rate,
+        net: 0,
+        vat: 0,
+        amount: 0,
+      };
+    }
+
+    summary[key].net += net;
+    summary[key].vat += vat;
+    summary[key].amount += total;
+  });
+
+  return Object.values(summary);
+}
+export function openBillingPrint(
+  billing,
+  currentStore,
+  mode = 'receipt',
+  storeSettings = {}
+) {
   if (!billing) return;
 
-  const title = mode === 'invoice' ? 'Invoice Print' : 'Receipt Print';
   const payment = billing.payments?.[billing.payments.length - 1];
+  const receiptNumber =
+    mode === 'invoice'
+      ? billing.invnumber || payment?.receiptnumber || `INV-${billing.billing_id}`
+      : payment?.receiptnumber || billing.invnumber || `RCT-${billing.billing_id}`;
+
+  const barcodeValue =
+    payment?.barcode_value || billing?.barcode_value || receiptNumber;
+
+  const footerText =
+    mode === 'invoice'
+      ? storeSettings?.invoice_footer || 'Goods once sold are not returnable.'
+      : storeSettings?.receipt_footer || 'Thank you for your purchase.';
+
+  const vatRows = groupVatSummary(billing.items || []);
+  const netAmount = Number(billing.subtotal || 0);
+  const vatAmount = Number(billing.vat_amount || 0);
+  const totalAmount = Number(billing.total || 0);
+  const paidAmount = Number(billing.paid_amount || 0);
+  const balanceDue = Number(billing.balance_due || 0);
+
+  const itemsHtml = (billing.items || [])
+    .map((item) => {
+      const name = item.product?.product_name || 'Product';
+      const qty = Number(item.quantity || 0);
+      const unitPrice = Number(item.unit_price || 0);
+      const total = Number(item.total_amount || 0);
+      const vatRate = Number(item.vat_rate || 0);
+
+      return `
+        <tr>
+          <td class="item-desc">
+            <div class="item-name">${escapeHtml(name)}</div>
+            <div class="item-meta">${qty} x ${currency(unitPrice, currentStore?.currency || 'KES')} &nbsp; VAT ${vatRate}%</div>
+          </td>
+          <td class="amount-cell">${currency(total, currentStore?.currency || 'KES')}</td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  const vatHtml = vatRows
+    .map(
+      (row) => `
+      <tr>
+        <td>${row.rate}%</td>
+        <td>${currency(row.net, currentStore?.currency || 'KES')}</td>
+        <td>${currency(row.vat, currentStore?.currency || 'KES')}</td>
+        <td>${currency(row.amount, currentStore?.currency || 'KES')}</td>
+      </tr>
+    `
+    )
+    .join('');
+
   const html = `<!doctype html>
   <html>
     <head>
-      <title>${title}</title>
+      <title>${mode === 'invoice' ? 'Invoice Print' : 'Receipt Print'}</title>
       <style>
-        body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
-        .header, .summary { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
-        .brand { font-size: 22px; font-weight: 700; }
-        .muted { color: #6b7280; font-size: 12px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; }
-        th:last-child, td:last-child { text-align: right; }
-        .totals { margin-left: auto; width: 320px; }
-        .totals div { display: flex; justify-content: space-between; padding: 6px 0; }
-        .grand { font-weight: 700; font-size: 18px; border-top: 2px solid #111827; margin-top: 8px; padding-top: 12px; }
-        .pill { display: inline-block; padding: 6px 10px; border-radius: 999px; background: #111827; color: #fff; font-size: 12px; }
+        @page {
+          size: 80mm auto;
+          margin: 4mm;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        html, body {
+          margin: 0;
+          padding: 0;
+          background: #fff;
+          color: #000;
+          font-family: "Courier New", Courier, monospace;
+          font-size: 12px;
+          line-height: 1.35;
+        }
+
+        body {
+          width: 72mm;
+          margin: 0 auto;
+          padding: 2mm 0;
+        }
+
+        .center {
+          text-align: center;
+        }
+
+        .brand {
+          font-size: 20px;
+          font-weight: 700;
+          margin-bottom: 3px;
+          text-transform: uppercase;
+        }
+
+        .small {
+          font-size: 11px;
+        }
+
+        .muted {
+          color: #222;
+        }
+
+        .divider {
+          border-top: 1px dashed #000;
+          margin: 8px 0;
+        }
+
+        .meta-row,
+        .line-row,
+        .total-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          margin: 2px 0;
+          align-items: flex-start;
+        }
+
+        .line-row strong,
+        .total-row strong {
+          font-weight: 700;
+        }
+
+        .label {
+          flex: 1;
+        }
+
+        .value {
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        table {
+          width: 100%;
+          border-collapse: collapse;
+        }
+
+        .items-table th,
+        .items-table td {
+          padding: 4px 0;
+          vertical-align: top;
+        }
+
+        .items-table thead th {
+          border-bottom: 1px solid #000;
+          border-top: 1px solid #000;
+          font-size: 12px;
+        }
+
+        .items-table th:first-child {
+          text-align: left;
+        }
+
+        .items-table th:last-child,
+        .items-table td:last-child {
+          text-align: right;
+        }
+
+        .item-name {
+          font-weight: 700;
+        }
+
+        .item-meta {
+          font-size: 11px;
+        }
+
+        .amount-cell {
+          white-space: nowrap;
+          padding-left: 8px;
+        }
+
+        .totals {
+          margin-top: 6px;
+        }
+
+        .grand-total {
+          border-top: 1px solid #000;
+          border-bottom: 1px solid #000;
+          padding: 4px 0;
+          margin: 4px 0;
+          font-weight: 700;
+        }
+
+        .vat-table {
+          margin-top: 6px;
+        }
+
+        .vat-table th,
+        .vat-table td {
+          padding: 3px 2px;
+          font-size: 11px;
+          text-align: right;
+        }
+
+        .vat-table th:first-child,
+        .vat-table td:first-child {
+          text-align: left;
+        }
+
+        .vat-table thead th {
+          border-bottom: 1px solid #000;
+          border-top: 1px solid #000;
+        }
+
+        .footer-note {
+          margin-top: 8px;
+          text-align: center;
+          font-size: 11px;
+          white-space: pre-line;
+        }
+
+        .barcode-wrap {
+          margin-top: 10px;
+          text-align: center;
+        }
+
+        .barcode-text {
+          font-size: 11px;
+          margin-top: 3px;
+          letter-spacing: 0.5px;
+        }
+        .section-title {
+          text-align: center;
+          font-weight: 700;
+          margin: 4px 0;
+          text-transform: uppercase;
+        }
       </style>
     </head>
     <body>
-      <div class="header">
-        <div>
-          <div class="brand">${currentStore?.store_name || 'Store'}</div>
-          <div class="muted">${currentStore?.location || ''}</div>
-          <div class="muted">${currentStore?.telephone || ''}</div>
-          <div class="muted">${currentStore?.email_address || ''}</div>
-        </div>
-        <div>
-          <div class="pill">${mode === 'invoice' ? 'INVOICE' : 'RECEIPT'}</div>
-          <div style="margin-top:12px; font-weight:700;">${billing.invnumber || payment?.receiptnumber || `BILL-${billing.billing_id}`}</div>
-          <div class="muted">Date: ${formatDateTime(payment?.payment_date || billing.billing_date)}</div>
-          <div class="muted">Status: ${billing.status || 'draft'}</div>
-        </div>
+      <div class="center">
+        <div class="brand">${escapeHtml(currentStore?.store_name || 'Store')}</div>
+        ${currentStore?.location ? `<div class="small">Location: ${escapeHtml(currentStore.location)}</div>` : ''}
+        ${currentStore?.telephone ? `<div class="small">Tel: ${escapeHtml(currentStore.telephone)}</div>` : ''}
+        ${currentStore?.email_address ? `<div class="small">Email: ${escapeHtml(currentStore.email_address)}</div>` : ''}
+        ${currentStore?.pin ? `<div class="small">KRA PIN: ${escapeHtml(currentStore.pin)}</div>` : ''}
       </div>
 
-      <div class="summary">
-        <div>
-          <div style="font-weight:700; margin-bottom:8px;">Bill To</div>
-          <div>${billing.customer?.full_name || 'Customer'}</div>
-          <div class="muted">${billing.customer?.phone || ''}</div>
-          <div class="muted">${billing.customer?.email || ''}</div>
-        </div>
-        <div>
-          <div style="font-weight:700; margin-bottom:8px;">Cashier</div>
-          <div>${billing.user?.full_name || 'Cashier'}</div>
-          <div class="muted">${billing.notes || ''}</div>
-        </div>
-      </div>
+      <div class="divider"></div>
 
-      <table>
+      <div class="meta-row">
+        <div class="label">No</div>
+        <div class="value">${escapeHtml(receiptNumber)}</div>
+      </div>
+      <div class="meta-row">
+        <div class="label">Date</div>
+        <div class="value">${escapeHtml(formatDateTime(payment?.payment_date || billing.billing_date))}</div>
+      </div>
+      <div class="meta-row">
+        <div class="label">Customer</div>
+        <div class="value">${escapeHtml(billing.customer?.full_name || 'Walk-in Customer')}</div>
+      </div>
+      <div class="meta-row">
+        <div class="label">Served By</div>
+        <div class="value">${escapeHtml(billing.user?.full_name || 'Cashier')}</div>
+      </div>
+      ${
+        payment?.payment_method
+          ? `
+          <div class="meta-row">
+            <div class="label">Payment</div>
+            <div class="value">${escapeHtml(String(payment.payment_method).toUpperCase())}</div>
+          </div>
+        `
+          : ''
+      }
+      <div class="divider"></div>
+
+      <table class="items-table">
         <thead>
           <tr>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Unit Price</th>
-            <th>Total</th>
+            <th>Description</th>
+            <th>Amount</th>
           </tr>
         </thead>
         <tbody>
-          ${(billing.items || []).map((item) => `
-            <tr>
-              <td>${item.product?.product_name || 'Product'}</td>
-              <td>${item.quantity}</td>
-              <td>${currency(item.unit_price, currentStore?.currency || 'KES')}</td>
-              <td>${currency(item.total_amount, currentStore?.currency || 'KES')}</td>
-            </tr>
-          `).join('')}
+          ${itemsHtml}
         </tbody>
       </table>
 
+      <div class="divider"></div>
+
       <div class="totals">
-        <div><span>Subtotal</span><strong>${currency(billing.subtotal, currentStore?.currency || 'KES')}</strong></div>
-        <div><span>VAT</span><strong>${currency(billing.vat_amount, currentStore?.currency || 'KES')}</strong></div>
-        <div><span>Paid</span><strong>${currency(billing.paid_amount, currentStore?.currency || 'KES')}</strong></div>
-         <div class="grand"><span>Total</span><strong>${currency(billing.total, currentStore?.currency || 'KES')}</strong></div>
-        <div class="grand"><span>Balance</span><strong>${currency(billing.balance_due, currentStore?.currency || 'KES')}</strong></div>
+        <div class="line-row">
+          <div class="label">Net Amount</div>
+          <div class="value">${currency(netAmount, currentStore?.currency || 'KES')}</div>
+        </div>
+        <div class="line-row">
+          <div class="label">VAT Amount</div>
+          <div class="value">${currency(vatAmount, currentStore?.currency || 'KES')}</div>
+        </div>
+
+        <div class="grand-total">
+          <div class="total-row">
+            <div class="label"><strong>Total</strong></div>
+            <div class="value"><strong>${currency(totalAmount, currentStore?.currency || 'KES')}</strong></div>
+          </div>
+        </div>
+        
+        <div class="line-row">
+          <div class="label">Paid</div>
+          <div class="value">${currency(paidAmount, currentStore?.currency || 'KES')}</div>
+        </div>
+        <div class="line-row">
+          <div class="label">Balance Due</div>
+          <div class="value">${currency(balanceDue, currentStore?.currency || 'KES')}</div>
+        </div>
+        ${
+          payment?.change_returned
+            ? `
+            <div class="line-row">
+              <div class="label">Change</div>
+              <div class="value">${currency(payment.change_returned, currentStore?.currency || 'KES')}</div>
+            </div>
+          `
+            : ''
+        }
       </div>
 
-      ${payment ? `<p style="margin-top: 24px;"><strong>Payment:</strong> ${payment.payment_method.toUpperCase()} | Received ${currency(payment.amount_received, currentStore?.currency || 'KES')} | Change ${currency(payment.change_returned, currentStore?.currency || 'KES')}</p>` : ''}
+      ${
+        vatRows.length
+          ? `
+          <div class="section-title">VAT Summary</div>
+          <table class="vat-table">
+            <thead>
+              <tr>
+                <th>VAT%</th>
+                <th>Net</th>
+                <th>VAT</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${vatHtml}
+            </tbody>
+          </table>
+        `
+          : ''
+      }
 
-      <script>
-        window.onload = function() {
-          window.print();
-        }
-      </script>
+      <div class="divider"></div>
+
+      <div class="footer-note">
+        ${escapeHtml(footerText)}
+      </div>
+
+      ${
+        billing.notes
+          ? `<div class="footer-note">${escapeHtml(billing.notes)}</div>`
+          : ''
+      }
+
+      <div class="barcode-wrap">
+        <svg id="receipt-barcode"></svg>
+        <div class="barcode-text">${escapeHtml(barcodeValue)}</div>
+      </div>
     </body>
   </html>`;
 
-  const printWindow = window.open('', '_blank', 'width=900,height=700');
+  const printWindow = window.open('', '_blank', 'width=420,height=900');
   if (!printWindow) return;
+
   printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
+
+  printWindow.onload = () => {
+    const svg = printWindow.document.getElementById('receipt-barcode');
+
+    if (svg) {
+      JsBarcode(svg, barcodeValue, {
+        format: 'CODE128',
+        displayValue: false,
+        width: 1.4,
+        height: 42,
+        margin: 0,
+      });
+    }
+
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 300);
+  };
 }

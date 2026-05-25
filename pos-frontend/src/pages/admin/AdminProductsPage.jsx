@@ -207,7 +207,6 @@ const handleSubmit = async (e) => {
   try {
     const formData = new FormData();
     
-    // ... (keep your existing appends for store_id, sku, etc.)
     formData.append('store_id', String(Number(storeId)));
     formData.append('category_id', String(Number(form.category_id)));
     formData.append('sku', form.sku.trim());
@@ -215,10 +214,10 @@ const handleSubmit = async (e) => {
     formData.append('price', String(Number(form.price)));
     formData.append('cost_price', String(Number(form.cost_price)));
     formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
-    formData.append('is_active', form.is_active ? 'true' : 'false');
-    formData.append('clear_image', form.clear_image ? 'true' : 'false');
+  
+    formData.append('is_active', form.is_active ? '1' : '0');
+    formData.append('clear_image', form.clear_image ? '1' : '0');
 
-    // DEBUGGING BLOCK
     console.log('Mode:', form.image_mode);
     console.log('Is instance of File?', form.image_file instanceof File);
     console.log('File Object:', form.image_file);
@@ -229,13 +228,14 @@ const handleSubmit = async (e) => {
     } else if (form.image_mode === 'upload') {
       console.error('Upload mode active but no valid file found!');
     }
-
-    // Verify FormData contents
+    if (editingId) {
+      formData.append('_method', 'PUT'); 
+    }
     for (let [key, value] of formData.entries()) {
       console.log(`FormData Entry: ${key} =`, value);
     }
-
     if (editingId) {
+      
       await productService.update(editingId, formData);
     } else {
       await productService.create(formData);

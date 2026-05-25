@@ -22,6 +22,7 @@ import { currency, formatDateTime } from '../../utils/helpers';
 import { openBillingPrint } from '../../utils/print';
 
 const PRODUCTS_PER_PAGE = 12;
+const SEARCH_DEBOUNCE_MS = 350;
 
 const paymentMethods = [
   {
@@ -49,6 +50,18 @@ const extractList = (res) => {
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res)) return res;
   return [];
+};
+
+const extractPaginator = (res) => {
+  if (res?.data && !Array.isArray(res.data) && typeof res.data === 'object') {
+    return res.data;
+  }
+
+  if (res && !Array.isArray(res) && typeof res === 'object' && Array.isArray(res.data)) {
+    return res;
+  }
+
+  return null;
 };
 
 const getProductImage = (product) =>
@@ -104,8 +117,10 @@ export default function CashierPosPage() {
   const { stores, storeId, loading: storeLoading } = useStore();
 
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
-
   const searchInputRef = useRef(null);
+  const productCacheRef = useRef(new Map());
+  const productRequestIdRef = useRef(0);
+  const lastProductFilterRef = useRef('');
 
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
@@ -114,7 +129,11 @@ export default function CashierPosPage() {
 
   const [activeCategory, setActiveCategory] = useState('all');
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [draftSearch, setDraftSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [productTotalPages, setProductTotalPages] = useState(1);
+  const [productTotalItems, setProductTotalItems] = useState(0);
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -132,6 +151,7 @@ export default function CashierPosPage() {
   const [showDraftModal, setShowDraftModal] = useState(false);
 
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -152,12 +172,15 @@ export default function CashierPosPage() {
     });
   }, []);
 
-  const isOwnedByCurrentCashier = (record) => {
-    if (!user?.user_id) return true;
-    const ownerId = record?.user_id || record?.user?.user_id || record?.user?.id;
-    if (!ownerId) return true;
-    return String(ownerId) === String(user.user_id);
-  };
+  const isOwnedByCurrentCashier = useCallback(
+    (record) => {
+      if (!user?.user_id) return true;
+      const ownerId = record?.user_id || record?.user?.user_id || record?.user?.id;
+      if (!ownerId) return true;
+      return String(ownerId) === String(user.user_id);
+    },
+    [user]
+  );
 
   const resetPaymentState = (total = '') => {
     setPaymentMethod('');
@@ -215,7 +238,9 @@ export default function CashierPosPage() {
     throw new Error('Delete billing method is not implemented in billingService.');
   };
 
-  const loadStaticData = async () => {
+  const loadStaticData = useCallback(async () => {
+    if (!storeId) return;
+
     setCatalogLoading(true);
     setError('');
 
@@ -225,18 +250,19 @@ export default function CashierPosPage() {
       );
 
       const apiCall = Promise.all([
-        categoryService.list({ per_page: 50 }),
-        productService.list({ per_page: 200, is_active: true }),
-        customerService.list({ per_page: 100 }),
+        categoryService.list({
+          store_id: Number(storeId),
+          per_page: 100,
+        }),
+        customerService.list({
+          store_id: Number(storeId),
+          per_page: 100,
+        }),
       ]);
 
-      const [categoriesRes, productsRes, customersRes] = await Promise.race([
-        apiCall,
-        timeoutPromise,
-      ]);
+      const [categoriesRes, customersRes] = await Promise.race([apiCall, timeoutPromise]);
 
       setCategories(extractList(categoriesRes));
-      setProducts(extractList(productsRes));
       setCustomers(extractList(customersRes));
     } catch (err) {
       setError(
@@ -245,36 +271,128 @@ export default function CashierPosPage() {
         }`
       );
       setCategories([]);
-      setProducts([]);
       setCustomers([]);
     } finally {
       setCatalogLoading(false);
     }
-  };
+  }, [storeId]);
 
-  const loadDrafts = async ({ silent = false } = {}) => {
-    if (!storeId) return;
+  const loadProducts = useCallback(
+    async (page = 1, { force = false } = {}) => {
+      if (!storeId) return;
 
-    if (!silent) setDraftsLoading(true);
+      const normalizedSearch = debouncedSearch.trim();
+      const cacheKey = JSON.stringify({
+        storeId: String(storeId),
+        page,
+        category: String(activeCategory),
+        search: normalizedSearch.toLowerCase(),
+      });
 
-    try {
-      const response = await billingService.list({ per_page: 100, is_draft: true });
-      const data = extractList(response);
+      if (!force && productCacheRef.current.has(cacheKey)) {
+        const cached = productCacheRef.current.get(cacheKey);
+        setProducts(cached.items);
+        setProductTotalPages(cached.totalPages);
+        setProductTotalItems(cached.totalItems);
 
-      const filtered = (Array.isArray(data) ? data : []).filter(
-        (item) => String(item.store_id) === String(storeId) && isOwnedByCurrentCashier(item)
-      );
-
-      setDrafts(filtered);
-    } catch (err) {
-      if (!silent) {
-        setError(err?.response?.data?.message || err?.message || 'Failed to load drafts.');
+        if (page !== cached.currentPage) {
+          setCurrentPage(cached.currentPage);
+        }
+        return;
       }
-      setDrafts([]);
-    } finally {
-      if (!silent) setDraftsLoading(false);
-    }
-  };
+
+      setProductsLoading(true);
+      const requestId = ++productRequestIdRef.current;
+
+      try {
+        const params = {
+          store_id: Number(storeId),
+          per_page: PRODUCTS_PER_PAGE,
+          page,
+          is_active: true,
+        };
+
+        if (activeCategory !== 'all') {
+          params.category_id = Number(activeCategory);
+        }
+
+        if (normalizedSearch) {
+          params.search = normalizedSearch;
+        }
+
+        const response = await productService.list(params);
+
+        if (requestId !== productRequestIdRef.current) return;
+
+        const paginator = extractPaginator(response);
+        const items = extractList(response);
+        const nextPage = Number(paginator?.current_page || page);
+        const totalPages = Math.max(1, Number(paginator?.last_page || 1));
+        const totalItems = Number(paginator?.total || items.length);
+
+        const nextState = {
+          items,
+          totalPages,
+          totalItems,
+          currentPage: nextPage,
+        };
+
+        productCacheRef.current.set(cacheKey, nextState);
+
+        setProducts(items);
+        setProductTotalPages(totalPages);
+        setProductTotalItems(totalItems);
+
+        if (nextPage !== page) {
+          setCurrentPage(nextPage);
+        }
+      } catch (err) {
+        if (requestId !== productRequestIdRef.current) return;
+
+        setError(err?.response?.data?.message || err?.message || 'Failed to load products.');
+        setProducts([]);
+        setProductTotalPages(1);
+        setProductTotalItems(0);
+      } finally {
+        if (requestId === productRequestIdRef.current) {
+          setProductsLoading(false);
+        }
+      }
+    },
+    [storeId, activeCategory, debouncedSearch]
+  );
+
+  const loadDrafts = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!storeId) return;
+
+      if (!silent) setDraftsLoading(true);
+
+      try {
+        const response = await billingService.list({
+          store_id: Number(storeId),
+          per_page: 100,
+          is_draft: true,
+        });
+
+        const data = extractList(response);
+
+        const filtered = (Array.isArray(data) ? data : []).filter((item) =>
+          isOwnedByCurrentCashier(item)
+        );
+
+        setDrafts(filtered);
+      } catch (err) {
+        if (!silent) {
+          setError(err?.response?.data?.message || err?.message || 'Failed to load drafts.');
+        }
+        setDrafts([]);
+      } finally {
+        if (!silent) setDraftsLoading(false);
+      }
+    },
+    [storeId, isOwnedByCurrentCashier]
+  );
 
   const loadBillingDetail = async (billingId, { silent = false } = {}) => {
     if (!billingId) return null;
@@ -298,32 +416,68 @@ export default function CashierPosPage() {
       if (!silent) setBillingLoading(false);
     }
   };
-useEffect(() => {
-  if (success) {
-    const timer = setTimeout(() => {
-      setSuccess('');
-    }, 4000); // 4 seconds
 
-    return () => clearTimeout(timer); // Clean up if the message changes before 4s is up
-  }
-}, [success]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 4000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   useEffect(() => {
     if (!storeId) return;
 
     resetSale();
+    setCategories([]);
+    setCustomers([]);
+    setProducts([]);
+    setDrafts([]);
+    setSearch('');
+    setDebouncedSearch('');
+    setDraftSearch('');
+    setActiveCategory('all');
     setCurrentPage(1);
+    setProductTotalPages(1);
+    setProductTotalItems(0);
+    productCacheRef.current.clear();
+    lastProductFilterRef.current = '';
 
-    const bootstrap = async () => {
-      await Promise.allSettled([loadStaticData(), loadDrafts()]);
-    };
-
-    bootstrap();
-  }, [storeId]);
+    void Promise.allSettled([loadStaticData(), loadDrafts()]);
+  }, [storeId, loadStaticData, loadDrafts]);
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [activeCategory, search]);
+    if (!storeId) return;
+
+    const filterSignature = JSON.stringify({
+      storeId: String(storeId),
+      category: String(activeCategory),
+      search: debouncedSearch.trim().toLowerCase(),
+    });
+
+    const filtersChanged = lastProductFilterRef.current !== filterSignature;
+
+    if (filtersChanged) {
+      lastProductFilterRef.current = filterSignature;
+
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        return;
+      }
+    }
+
+    void loadProducts(currentPage);
+  }, [storeId, activeCategory, debouncedSearch, currentPage, loadProducts]);
 
   useEffect(() => {
     if (!storeLoading && !catalogLoading && !showPaymentModal && !showDraftModal) {
@@ -347,7 +501,7 @@ useEffect(() => {
     return detail || createdDraft;
   };
 
-const addOrIncrementProduct = async (product) => {
+  const addOrIncrementProduct = async (product) => {
     const current = await ensureDraft();
 
     const existing = current?.items?.find(
@@ -366,6 +520,7 @@ const addOrIncrementProduct = async (product) => {
         unit_price: product.price,
       });
     }
+
     const updatedBilling = await loadBillingDetail(current.billing_id, { silent: true });
     setDrafts((prev) => prev.filter((item) => String(item.billing_id) !== String(current.billing_id)));
 
@@ -376,10 +531,6 @@ const addOrIncrementProduct = async (product) => {
     setError('');
     setSuccess('');
     setSubmitting(true);
-
-    setTimeout(() => {
-        setSuccess('');
-      }, 4000);
 
     try {
       await addOrIncrementProduct(product);
@@ -473,7 +624,7 @@ const addOrIncrementProduct = async (product) => {
     return updatedBilling;
   };
 
-const handleSaveOrUpdateDraft = async () => {
+  const handleSaveOrUpdateDraft = async () => {
     if (!billing?.items?.length) return;
 
     setError('');
@@ -490,7 +641,6 @@ const handleSaveOrUpdateDraft = async () => {
           : 'Draft saved successfully.'
       );
       resetSale();
-
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to save draft.');
     } finally {
@@ -686,14 +836,7 @@ const handleSaveOrUpdateDraft = async () => {
     } finally {
       setSubmitting(false);
     }
-  }, [
-    submitting,
-    showPaymentModal,
-    showDraftModal,
-    billing,
-    search,
-    focusSearchInput,
-  ]);
+  }, [submitting, showPaymentModal, showDraftModal, billing, search, focusSearchInput]);
 
   useEffect(() => {
     const handleGlobalKeyDown = (event) => {
@@ -744,49 +887,42 @@ const handleSaveOrUpdateDraft = async () => {
     showPaymentModal,
     showDraftModal,
     focusSearchInput,
-    handleSaveOrUpdateDraft,
-    handleProceedToPayment,
     handleEscapeShortcut,
   ]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesCategory =
-        activeCategory === 'all' || String(product.category_id) === String(activeCategory);
-
-      const keyword = search.trim().toLowerCase();
-      const matchesSearch =
-        !keyword ||
-        product?.product_name?.toLowerCase().includes(keyword) ||
-        product?.sku?.toLowerCase().includes(keyword);
-
-      return matchesCategory && matchesSearch;
-    });
-  }, [products, activeCategory, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
-    return filteredProducts.slice(startIndex, startIndex + PRODUCTS_PER_PAGE);
-  }, [filteredProducts, currentPage]);
-
   const visiblePages = useMemo(
-    () => buildPagination(currentPage, totalPages),
-    [currentPage, totalPages]
+    () => buildPagination(currentPage, productTotalPages),
+    [currentPage, productTotalPages]
   );
 
-  const startItem = filteredProducts.length === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
-  const endItem = Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+  const startItem = productTotalItems === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const endItem = Math.min(currentPage * PRODUCTS_PER_PAGE, productTotalItems);
 
   const itemCount =
     billing?.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
+
+  const filteredDrafts = useMemo(() => {
+    const keyword = draftSearch.trim().toLowerCase();
+
+    if (!keyword) return drafts;
+
+    return drafts.filter((draft) => {
+      const haystack = [
+        draft?.invnumber,
+        `Draft #${draft?.billing_id || ''}`,
+        draft?.customer?.full_name,
+        draft?.customer?.phone,
+        draft?.customer?.email,
+        draft?.notes,
+        String(draft?.total || ''),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(keyword);
+    });
+  }, [drafts, draftSearch]);
 
   if (storeLoading) {
     return (
@@ -829,9 +965,7 @@ const handleSaveOrUpdateDraft = async () => {
           <div className="card hero-card compact-hero">
             <div className="store-header-layout">
               <div className="store-brand-identity">
-                <span className="eyebrow">
-                   {user?.role || currentStore?.role || 'Cashier'}
-                        </span>
+                <span className="eyebrow">{user?.role || currentStore?.role || 'Cashier'}</span>
                 <h2 className="store-title">{currentStore?.store_name || 'Fortune Supermarket'}</h2>
               </div>
 
@@ -891,8 +1025,10 @@ const handleSaveOrUpdateDraft = async () => {
               {error ? <div className="form-error">{error}</div> : null}
               {success ? <div className="form-success">{success}</div> : null}
 
+              {productsLoading ? <div className="page-loader">Loading products...</div> : null}
+
               <div className="products-grid products-grid-enhanced">
-                {paginatedProducts.map((product) => {
+                {products.map((product) => {
                   const image = getProductImage(product);
 
                   return (
@@ -945,18 +1081,18 @@ const handleSaveOrUpdateDraft = async () => {
                   );
                 })}
 
-                {!filteredProducts.length ? (
+                {!productsLoading && !products.length ? (
                   <div className="card">
                     <p>No products matched your search.</p>
                   </div>
                 ) : null}
               </div>
 
-              {filteredProducts.length > 0 ? (
+              {productTotalItems > 0 ? (
                 <div className="pagination-bar">
                   <div className="pagination-summary">
                     Showing <strong>{startItem}</strong> - <strong>{endItem}</strong> of{' '}
-                    <strong>{filteredProducts.length}</strong> products
+                    <strong>{productTotalItems}</strong> products
                   </div>
 
                   <div className="pagination-controls">
@@ -964,7 +1100,7 @@ const handleSaveOrUpdateDraft = async () => {
                       type="button"
                       className="ghost-button pagination-btn"
                       onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1}
+                      disabled={currentPage === 1 || productsLoading}
                     >
                       First
                     </button>
@@ -973,7 +1109,7 @@ const handleSaveOrUpdateDraft = async () => {
                       type="button"
                       className="ghost-button pagination-btn"
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1}
+                      disabled={currentPage === 1 || productsLoading}
                     >
                       Previous
                     </button>
@@ -990,6 +1126,7 @@ const handleSaveOrUpdateDraft = async () => {
                             type="button"
                             className={`pagination-page-btn ${currentPage === page ? 'active' : ''}`}
                             onClick={() => setCurrentPage(page)}
+                            disabled={productsLoading}
                           >
                             {page}
                           </button>
@@ -1000,8 +1137,10 @@ const handleSaveOrUpdateDraft = async () => {
                     <button
                       type="button"
                       className="ghost-button pagination-btn"
-                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      disabled={currentPage === totalPages}
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, productTotalPages))
+                      }
+                      disabled={currentPage === productTotalPages || productsLoading}
                     >
                       Next
                     </button>
@@ -1009,8 +1148,8 @@ const handleSaveOrUpdateDraft = async () => {
                     <button
                       type="button"
                       className="ghost-button pagination-btn"
-                      onClick={() => setCurrentPage(totalPages)}
-                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(productTotalPages)}
+                      disabled={currentPage === productTotalPages || productsLoading}
                     >
                       Last
                     </button>
@@ -1026,10 +1165,8 @@ const handleSaveOrUpdateDraft = async () => {
             <div className="card-header">
               <div>
                 <h3>Current billing</h3>
-                <p>
-                  {billing
-                    ? billing.invnumber || `Draft #${billing.billing_id}`
-                    : 'No active billing yet'}
+                <p className="invoice-subtext">
+                  {billing ? billing.invnumber || `Draft #${billing.billing_id}` : 'No active billing yet'}
                 </p>
               </div>
 
@@ -1037,6 +1174,46 @@ const handleSaveOrUpdateDraft = async () => {
                 <ShoppingCart size={16} />
                 {itemCount} items
               </div>
+            </div>
+
+            <div className="customer-billing-section">
+              {selectedCustomerId ? (
+                <div className="selected-customer-box">
+                  <div className="customer-meta">
+                    <span className="meta-label">Customer / Client</span>
+                    <strong>
+                      {customers.find(
+                        (c) => String(c.customer_id) === String(selectedCustomerId)
+                      )?.full_name || 'Selected Customer'}
+                    </strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="change-customer-btn"
+                    onClick={() => setSelectedCustomerId('')}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="form-grid">
+                  <label>
+                    Customer Account
+                    <select
+                      className="select-input"
+                      value={selectedCustomerId}
+                      onChange={(e) => setSelectedCustomerId(e.target.value)}
+                    >
+                      <option value="">Customer (Default)</option>
+                      {customers.map((customer) => (
+                        <option key={customer.customer_id} value={customer.customer_id}>
+                          {customer.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="hero-quick-actions">
@@ -1053,24 +1230,6 @@ const handleSaveOrUpdateDraft = async () => {
               </button>
               {draftsLoading ? <span className="muted inline-note">Refreshing drafts...</span> : null}
             </div>
-
-            <div className="form-grid">
-              <label>
-                Customer
-                <select
-                  className="select-input"
-                  value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                >
-                  <option value="">Customer</option>
-                  {customers.map((customer) => (
-                    <option key={customer.customer_id} value={customer.customer_id}>
-                      {customer.full_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
           </div>
 
           <div className="card">
@@ -1085,32 +1244,39 @@ const handleSaveOrUpdateDraft = async () => {
               {billing?.items?.length ? (
                 billing.items.map((item) => (
                   <div className="billing-item-row" key={item.billing_item_id}>
-                    <div>
-                      <strong>{item.product?.product_name}</strong>
-                      <p>{currency(item.unit_price, currentStore?.currency)} each</p>
+                    <div className="billing-item-info">
+                      <strong className="product-name">{item.product?.product_name}</strong>
+                      <div className="vat-meta-wrapper">
+                        <span className="vat-badge">{Number(item.vat_rate)}% VAT</span>
+                      </div>
                     </div>
 
                     <div className="billing-item-actions">
-                      <button
-                        type="button"
-                        className="icon-button"
-                        onClick={() => updateItemQuantity(item, Number(item.quantity) - 1)}
-                        disabled={submitting}
-                      >
-                        <Minus size={14} />
-                      </button>
+                      <div className="quantity-control">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => updateItemQuantity(item, Number(item.quantity) - 1)}
+                          disabled={submitting}
+                        >
+                          <Minus size={14} />
+                        </button>
 
-                      <span>{item.quantity}</span>
+                        <span className="quantity-display">{item.quantity}</span>
 
-                      <button
-                        type="button"
-                        className="icon-button"
-                        onClick={() => updateItemQuantity(item, Number(item.quantity) + 1)}
-                        disabled={submitting}
-                      >
-                        <Plus size={14} />
-                      </button>
-                     <strong>{currency(item?.line_subtotal || 0, currentStore?.currency)}</strong>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => updateItemQuantity(item, Number(item.quantity) + 1)}
+                          disabled={submitting}
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+
+                      <strong className="line-total">
+                        {currency(getItemTotal(item), currentStore?.currency)}
+                      </strong>
 
                       <button
                         type="button"
@@ -1128,18 +1294,20 @@ const handleSaveOrUpdateDraft = async () => {
               )}
             </div>
 
-            <div className="billing-summary-grid">
-              <div className="summary-box accent">
-                <span>Total</span>
-                <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
-              </div>
+            <div className="billing-summary-grid medium-layout">
               <div className="summary-box">
-                <span>VAT(16%)</span>
+                <span>Net.Amount</span>
+                <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
+              </div>
+
+              <div className="summary-box">
+                <span>VAT</span>
                 <strong>{currency(billing?.vat_amount || 0, currentStore?.currency)}</strong>
               </div>
-              <div className="summary-box">
-                <span>Subtotal</span>
-                <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
+
+              <div className="summary-box accent">
+                <span>Total Amount</span>
+                <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
               </div>
             </div>
 
@@ -1151,7 +1319,7 @@ const handleSaveOrUpdateDraft = async () => {
                 onClick={handleSaveOrUpdateDraft}
               >
                 <FolderClock size={16} />
-                {billing?.billing_id ? 'Save' : 'Update'}
+                {billing?.billing_id ? 'Update Draft' : 'Save Draft'}
               </button>
 
               <button
@@ -1184,9 +1352,7 @@ const handleSaveOrUpdateDraft = async () => {
             <div className="modal-header">
               <div>
                 <h3>Payment</h3>
-                <p className="muted">
-                  {billing?.invnumber || `Draft #${billing?.billing_id || ''}`}
-                </p>
+                <p className="muted">{billing?.invnumber || `Draft #${billing?.billing_id || ''}`}</p>
               </div>
 
               <button
@@ -1216,8 +1382,7 @@ const handleSaveOrUpdateDraft = async () => {
                     <span>Customer</span>
                     <strong>
                       {customers.find(
-                        (customer) =>
-                          String(customer.customer_id) === String(selectedCustomerId)
+                        (customer) => String(customer.customer_id) === String(selectedCustomerId)
                       )?.full_name || 'Selected'}
                     </strong>
                   </div>
@@ -1232,9 +1397,7 @@ const handleSaveOrUpdateDraft = async () => {
                     <button
                       key={method.key}
                       type="button"
-                      className={`payment-method-card ${
-                        paymentMethod === method.key ? 'active' : ''
-                      }`}
+                      className={`payment-method-card ${paymentMethod === method.key ? 'active' : ''}`}
                       onClick={() => handlePaymentMethodChange(method.key)}
                     >
                       <div className="payment-method-card-top">
@@ -1265,7 +1428,8 @@ const handleSaveOrUpdateDraft = async () => {
                           placeholder="Cash tendered"
                         />
                       </label>
-                                            <label>
+
+                      <label>
                         Amount to be paid
                         <input
                           className="text-input"
@@ -1406,13 +1570,24 @@ const handleSaveOrUpdateDraft = async () => {
               </button>
             </div>
 
+            <div className="toolbar-row pos-toolbar-wrap" style={{ marginBottom: 12 }}>
+              <div className="search-shell">
+                <Search size={16} />
+                <input
+                  value={draftSearch}
+                  onChange={(e) => setDraftSearch(e.target.value)}
+                  placeholder="Search drafts by invoice, customer, phone, email or note"
+                />
+              </div>
+            </div>
+
             <div className="draft-modal-list">
               {draftsLoading ? (
                 <div className="empty-draft-state">
                   <p>Loading drafts...</p>
                 </div>
-              ) : drafts.length ? (
-                drafts.map((draft) => (
+              ) : filteredDrafts.length ? (
+                filteredDrafts.map((draft) => (
                   <div
                     key={draft.billing_id}
                     className={`draft-modal-row ${
@@ -1461,7 +1636,7 @@ const handleSaveOrUpdateDraft = async () => {
                 ))
               ) : (
                 <div className="empty-draft-state">
-                  <p>No open drafts right now.</p>
+                  <p>No drafts matched your search.</p>
                 </div>
               )}
             </div>
