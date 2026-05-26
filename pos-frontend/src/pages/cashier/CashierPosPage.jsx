@@ -19,7 +19,9 @@ import { categoryService } from '../../services/categoryService';
 import { customerService } from '../../services/customerService';
 import { productService } from '../../services/productService';
 import { currency, formatDateTime } from '../../utils/helpers';
-import { openBillingPrint } from '../../utils/print';
+import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
+import { mergeStoreSettings } from '../../utils/storeSettings';
+
 
 const PRODUCTS_PER_PAGE = 12;
 const SEARCH_DEBOUNCE_MS = 350;
@@ -77,9 +79,9 @@ const getProductImage = (product) =>
 const getItemTotal = (item) =>
   Number(
     item?.total_amount ??
-      item?.line_total ??
-      item?.line_subtotal ??
-      Number(item?.quantity || 0) * Number(item?.unit_price || 0)
+    item?.line_total ??
+    item?.line_subtotal ??
+    Number(item?.quantity || 0) * Number(item?.unit_price || 0)
   );
 
 const buildPagination = (currentPage, totalPages) => {
@@ -117,6 +119,7 @@ export default function CashierPosPage() {
   const { stores, storeId, loading: storeLoading } = useStore();
 
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
+  const printSettings = mergeStoreSettings(currentStore);
   const searchInputRef = useRef(null);
   const productCacheRef = useRef(new Map());
   const productRequestIdRef = useRef(0);
@@ -244,30 +247,31 @@ export default function CashierPosPage() {
     setCatalogLoading(true);
     setError('');
 
-    try {
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('API request timeout after 10 seconds')), 10000)
-      );
+try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('API request timeout after 10 seconds')), 10000)
+    );
 
-      const apiCall = Promise.all([
+    // Race the parallel API requests against the 10-second timeout clock
+    const [categoriesRes, customersRes] = await Promise.race([
+      Promise.all([
         categoryService.list({
           store_id: Number(storeId),
-          per_page: 100,
+          per_page: 12,
         }),
         customerService.list({
           store_id: Number(storeId),
-          per_page: 100,
+          per_page: 12,
         }),
-      ]);
+      ]),
+      timeoutPromise
+    ]);
 
-      const [categoriesRes, customersRes] = await Promise.race([apiCall, timeoutPromise]);
-
-      setCategories(extractList(categoriesRes));
-      setCustomers(extractList(customersRes));
-    } catch (err) {
+    setCategories(extractList(categoriesRes));
+    setCustomers(extractList(customersRes));
+  } catch (err) {
       setError(
-        `Failed to load catalog: ${
-          err?.response?.data?.message || err?.message || 'Unknown error'
+        `Failed to load catalog: ${err?.response?.data?.message || err?.message || 'Unknown error'
         }`
       );
       setCategories([]);
@@ -362,25 +366,28 @@ export default function CashierPosPage() {
     [storeId, activeCategory, debouncedSearch]
   );
 
-  const loadDrafts = useCallback(
+const loadDrafts = useCallback(
     async ({ silent = false } = {}) => {
       if (!storeId) return;
 
       if (!silent) setDraftsLoading(true);
 
       try {
-        const response = await billingService.list({
-          store_id: Number(storeId),
-          per_page: 100,
-          is_draft: true,
-        });
-
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Drafts request timeout after 10 seconds')), 10000)
+        );
+        const response = await Promise.race([
+          billingService.list({
+            store_id: Number(storeId),
+            per_page: 12, 
+            is_draft: true,
+          }),
+          timeoutPromise
+        ]);
         const data = extractList(response);
-
         const filtered = (Array.isArray(data) ? data : []).filter((item) =>
           isOwnedByCurrentCashier(item)
         );
-
         setDrafts(filtered);
       } catch (err) {
         if (!silent) {
@@ -453,8 +460,19 @@ export default function CashierPosPage() {
     productCacheRef.current.clear();
     lastProductFilterRef.current = '';
 
-    void Promise.allSettled([loadStaticData(), loadDrafts()]);
-  }, [storeId, loadStaticData, loadDrafts]);
+  const initializePosData = async () => {
+    try {
+      await Promise.all([
+        loadStaticData(),
+        loadDrafts({ silent: true }) 
+      ]);
+    } catch (err) {
+      console.error("Failed to initialize baseline POS data:", err);
+    }
+  };
+
+  initializePosData();
+}, [storeId, loadStaticData, loadDrafts]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -737,7 +755,7 @@ export default function CashierPosPage() {
       const paidResponse = await billingService.show(billing.billing_id);
       const paidBilling = paidResponse?.data || paidResponse;
 
-      openBillingPrint(paidBilling, currentStore, 'receipt');
+      openBillingPrint(paidBilling, currentStore, 'receipt', printSettings);
 
       removeDraftPreview(billing.billing_id);
       resetSale();
@@ -1007,9 +1025,8 @@ export default function CashierPosPage() {
                 <button
                   key={category.category_id}
                   type="button"
-                  className={`chip ${
-                    String(activeCategory) === String(category.category_id) ? 'active' : ''
-                  }`}
+                  className={`chip ${String(activeCategory) === String(category.category_id) ? 'active' : ''
+                    }`}
                   onClick={() => setActiveCategory(category.category_id)}
                 >
                   {category.category_name}
@@ -1247,7 +1264,9 @@ export default function CashierPosPage() {
                     <div className="billing-item-info">
                       <strong className="product-name">{item.product?.product_name}</strong>
                       <div className="vat-meta-wrapper">
-                        <span className="vat-badge">{Number(item.vat_rate)}% VAT</span>
+                        <span className="vat-badge">
+                          {item.vat_amount !== undefined && ` +${Number(item.vat_amount).toFixed(2)}`} (VAT)
+                        </span>
                       </div>
                     </div>
 
@@ -1296,12 +1315,12 @@ export default function CashierPosPage() {
 
             <div className="billing-summary-grid medium-layout">
               <div className="summary-box">
-                <span>Net.Amount</span>
+                <span>Net Amount</span>
                 <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
               </div>
 
               <div className="summary-box">
-                <span>VAT</span>
+                <span>VAT ({Number(billing?.vat_rate || 16)}%)</span>
                 <strong>{currency(billing?.vat_amount || 0, currentStore?.currency)}</strong>
               </div>
 
@@ -1329,19 +1348,31 @@ export default function CashierPosPage() {
                 onClick={handleProceedToPayment}
               >
                 <CreditCard size={16} />
-                Proceed to Payment
+                Pay now
               </button>
 
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => billing && openBillingPrint(billing, currentStore, 'invoice')}
+                onClick={() =>
+                  billing && openBillingPrint(billing, currentStore, 'invoice', printSettings)
+                }
                 disabled={!billing}
               >
                 <Printer size={16} />
                 Print
               </button>
+
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => billing && downloadBillingDocument(billing, 'invoice')}
+                disabled={!billing}
+              >
+                Download
+              </button>
             </div>
+
           </div>
         </aside>
       </section>
@@ -1590,9 +1621,8 @@ export default function CashierPosPage() {
                 filteredDrafts.map((draft) => (
                   <div
                     key={draft.billing_id}
-                    className={`draft-modal-row ${
-                      String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
-                    }`}
+                    className={`draft-modal-row ${String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
+                      }`}
                   >
                     <button
                       type="button"

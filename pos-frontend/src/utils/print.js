@@ -1,5 +1,7 @@
 import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
 import { currency, formatDateTime } from './helpers';
+import { mergeStoreSettings } from './storeSettings';
 
 const escapeHtml = (value = '') =>
   String(value)
@@ -35,6 +37,40 @@ function groupVatSummary(items = []) {
 
   return Object.values(summary);
 }
+
+const stripTrailingSlash = (value = '') => String(value).replace(/\/+$/, '');
+
+const resolveApiBaseUrl = () => {
+  const envBaseUrl = stripTrailingSlash(
+    import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || ''
+  );
+
+  if (envBaseUrl) return envBaseUrl;
+  // return `${stripTrailingSlash(window.location.origin)}/api`;
+};
+
+export const resolvePublicDocumentUrl = (billing, mode = 'receipt', action = 'view') => {
+  if (!billing?.uuid) return '';
+
+  const baseUrl = resolveApiBaseUrl();
+  const suffix = action === 'download' ? '/download' : '';
+
+  return `${baseUrl}/public/documents/${mode}/${billing.uuid}${suffix}`;
+};
+
+export const downloadBillingDocument = (billing, mode = 'receipt') => {
+  const url = resolvePublicDocumentUrl(billing, mode, 'download');
+  if (!url) return;
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+};
+
 export function openBillingPrint(
   billing,
   currentStore,
@@ -43,19 +79,29 @@ export function openBillingPrint(
 ) {
   if (!billing) return;
 
+  const settings = mergeStoreSettings(storeSettings);
   const payment = billing.payments?.[billing.payments.length - 1];
-  const receiptNumber =
+
+  const documentNumber =
     mode === 'invoice'
       ? billing.invnumber || payment?.receiptnumber || `INV-${billing.billing_id}`
       : payment?.receiptnumber || billing.invnumber || `RCT-${billing.billing_id}`;
-
-  const barcodeValue =
-    payment?.barcode_value || billing?.barcode_value || receiptNumber;
+  const barcodeValue = documentNumber;
+  const qrUrl =
+    resolvePublicDocumentUrl(billing, mode, 'view') ||
+    `${window.location.origin}`;
 
   const footerText =
     mode === 'invoice'
-      ? storeSettings?.invoice_footer || 'Goods once sold are not returnable.'
-      : storeSettings?.receipt_footer || 'Thank you for your purchase.';
+      ? settings.invoice_footer || 'Goods once sold are not returnable.'
+      : settings.receipt_footer || 'Thank you for your purchase.';
+
+  const headerText =
+    mode === 'invoice'
+      ? settings.invoice_header || ''
+      : settings.receipt_header || '';
+
+  const documentTitle = mode === 'invoice' ? 'Tax Invoice' : 'Sales Receipt';
 
   const vatRows = groupVatSummary(billing.items || []);
   const netAmount = Number(billing.subtotal || 0);
@@ -64,19 +110,38 @@ export function openBillingPrint(
   const paidAmount = Number(billing.paid_amount || 0);
   const balanceDue = Number(billing.balance_due || 0);
 
+  const paperWidth = Number(settings.paper_width || 80);
+  const bodyWidth = Math.max(paperWidth - 8, 50);
+
+  const showBarcode = settings.show_barcode !== false;
+  const showQrCode = settings.show_qrcode !== false;
+  const showVatSummary = settings.show_vat_summary !== false;
+  const showCustomer = settings.show_customer_on_print !== false;
+  const showCashier = settings.show_cashier_on_print !== false;
+  const showLogo = settings.show_logo_on_print !== false;
+  const showStoreContacts = settings.show_store_contacts_on_print !== false;
+  const showStorePin = settings.show_store_pin_on_print !== false;
+  const showPaymentMethod = settings.show_payment_method_on_print !== false;
+
   const itemsHtml = (billing.items || [])
     .map((item) => {
       const name = item.product?.product_name || 'Product';
       const qty = Number(item.quantity || 0);
       const unitPrice = Number(item.unit_price || 0);
       const total = Number(item.total_amount || 0);
-      const vatRate = Number(item.vat_rate || 0);
+      const vatAmountText =
+        item.vat_amount !== undefined && item.vat_amount !== null
+          ? ` +${Number(item.vat_amount).toFixed(2)}`
+          : '';
 
       return `
         <tr>
           <td class="item-desc">
             <div class="item-name">${escapeHtml(name)}</div>
-            <div class="item-meta">${qty} x ${currency(unitPrice, currentStore?.currency || 'KES')} &nbsp; VAT ${vatRate}%</div>
+            <div class="item-meta">${qty} x ${currency(
+              unitPrice,
+              currentStore?.currency || 'KES'
+            )} &nbsp; ${escapeHtml(vatAmountText)}</div>
           </td>
           <td class="amount-cell">${currency(total, currentStore?.currency || 'KES')}</td>
         </tr>
@@ -100,10 +165,11 @@ export function openBillingPrint(
   const html = `<!doctype html>
   <html>
     <head>
+      <meta charset="utf-8" />
       <title>${mode === 'invoice' ? 'Invoice Print' : 'Receipt Print'}</title>
       <style>
         @page {
-          size: 80mm auto;
+          size: ${paperWidth}mm auto;
           margin: 4mm;
         }
 
@@ -122,7 +188,7 @@ export function openBillingPrint(
         }
 
         body {
-          width: 72mm;
+          width: ${bodyWidth}mm;
           margin: 0 auto;
           padding: 2mm 0;
         }
@@ -138,12 +204,34 @@ export function openBillingPrint(
           text-transform: uppercase;
         }
 
-        .small {
-          font-size: 11px;
+        .doc-title {
+          margin-top: 6px;
+          font-size: 14px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
-        .muted {
-          color: #222;
+        .header-note {
+          margin-top: 4px;
+          font-size: 11px;
+          white-space: pre-line;
+        }
+
+        .logo-wrap {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 6px;
+        }
+
+        .logo-wrap img {
+          max-width: 52mm;
+          max-height: 20mm;
+          object-fit: contain;
+        }
+
+        .small {
+          font-size: 11px;
         }
 
         .divider {
@@ -159,11 +247,6 @@ export function openBillingPrint(
           gap: 8px;
           margin: 2px 0;
           align-items: flex-start;
-        }
-
-        .line-row strong,
-        .total-row strong {
-          font-weight: 700;
         }
 
         .label {
@@ -254,53 +337,117 @@ export function openBillingPrint(
           white-space: pre-line;
         }
 
-        .barcode-wrap {
+        .codes-wrap {
           margin-top: 10px;
+          display: grid;
+          gap: 10px;
+        }
+
+        .barcode-wrap,
+        .qrcode-wrap {
           text-align: center;
         }
 
-        .barcode-text {
+        .barcode-text,
+        .qrcode-text {
           font-size: 11px;
           margin-top: 3px;
           letter-spacing: 0.5px;
+          word-break: break-word;
         }
-        .section-title {
-          text-align: center;
-          font-weight: 700;
-          margin: 4px 0;
-          text-transform: uppercase;
+
+        .qrcode-image {
+          width: 96px;
+          height: 96px;
+          display: inline-block;
+        }
+
+        .scan-hint {
+          font-size: 10px;
+          margin-top: 4px;
         }
       </style>
     </head>
     <body>
       <div class="center">
+        ${
+          showLogo && currentStore?.logo_url
+            ? `<div class="logo-wrap"><img src="${escapeHtml(currentStore.logo_url)}" alt="Store Logo" /></div>`
+            : ''
+        }
+
         <div class="brand">${escapeHtml(currentStore?.store_name || 'Store')}</div>
-        ${currentStore?.location ? `<div class="small">Location: ${escapeHtml(currentStore.location)}</div>` : ''}
-        ${currentStore?.telephone ? `<div class="small">Tel: ${escapeHtml(currentStore.telephone)}</div>` : ''}
-        ${currentStore?.email_address ? `<div class="small">Email: ${escapeHtml(currentStore.email_address)}</div>` : ''}
-        ${currentStore?.pin ? `<div class="small">KRA PIN: ${escapeHtml(currentStore.pin)}</div>` : ''}
+
+        ${
+          showStoreContacts && currentStore?.location
+            ? `<div class="small">Location: ${escapeHtml(currentStore.location)}</div>`
+            : ''
+        }
+        ${
+          showStoreContacts && currentStore?.telephone
+            ? `<div class="small">Tel: ${escapeHtml(currentStore.telephone)}</div>`
+            : ''
+        }
+        ${
+          showStoreContacts && currentStore?.email_address
+            ? `<div class="small">Email: ${escapeHtml(currentStore.email_address)}</div>`
+            : ''
+        }
+        ${
+          showStorePin && currentStore?.pin
+            ? `<div class="small">KRA PIN: ${escapeHtml(currentStore.pin)}</div>`
+            : ''
+        }
+
+        <div class="doc-title">${escapeHtml(documentTitle)}</div>
+
+        ${
+          headerText
+            ? `<div class="header-note">${escapeHtml(headerText)}</div>`
+            : ''
+        }
       </div>
 
       <div class="divider"></div>
 
       <div class="meta-row">
         <div class="label">No</div>
-        <div class="value">${escapeHtml(receiptNumber)}</div>
+        <div class="value">${escapeHtml(documentNumber)}</div>
       </div>
+
       <div class="meta-row">
         <div class="label">Date</div>
-        <div class="value">${escapeHtml(formatDateTime(payment?.payment_date || billing.billing_date))}</div>
+        <div class="value">${escapeHtml(
+          formatDateTime(payment?.payment_date || billing.billing_date)
+        )}</div>
       </div>
-      <div class="meta-row">
-        <div class="label">Customer</div>
-        <div class="value">${escapeHtml(billing.customer?.full_name || 'Walk-in Customer')}</div>
-      </div>
-      <div class="meta-row">
-        <div class="label">Served By</div>
-        <div class="value">${escapeHtml(billing.user?.full_name || 'Cashier')}</div>
-      </div>
+
       ${
-        payment?.payment_method
+        showCustomer
+          ? `
+          <div class="meta-row">
+            <div class="label">Customer</div>
+            <div class="value">${escapeHtml(
+              billing.customer?.full_name || 'Walk-in Customer'
+            )}</div>
+          </div>
+        `
+          : ''
+      }
+
+      ${
+        showCashier
+          ? `
+          <div class="meta-row">
+            <div class="label">Served By</div>
+            <div class="value">${escapeHtml(billing.user?.full_name || 'Cashier')}</div>
+          </div>
+        `
+          : ''
+      }
+
+      ${
+        showPaymentMethod && payment?.payment_method
           ? `
           <div class="meta-row">
             <div class="label">Payment</div>
@@ -309,6 +456,7 @@ export function openBillingPrint(
         `
           : ''
       }
+
       <div class="divider"></div>
 
       <table class="items-table">
@@ -330,6 +478,7 @@ export function openBillingPrint(
           <div class="label">Net Amount</div>
           <div class="value">${currency(netAmount, currentStore?.currency || 'KES')}</div>
         </div>
+
         <div class="line-row">
           <div class="label">VAT Amount</div>
           <div class="value">${currency(vatAmount, currentStore?.currency || 'KES')}</div>
@@ -341,15 +490,17 @@ export function openBillingPrint(
             <div class="value"><strong>${currency(totalAmount, currentStore?.currency || 'KES')}</strong></div>
           </div>
         </div>
-        
+
         <div class="line-row">
           <div class="label">Paid</div>
           <div class="value">${currency(paidAmount, currentStore?.currency || 'KES')}</div>
         </div>
+
         <div class="line-row">
           <div class="label">Balance Due</div>
           <div class="value">${currency(balanceDue, currentStore?.currency || 'KES')}</div>
         </div>
+
         ${
           payment?.change_returned
             ? `
@@ -363,9 +514,8 @@ export function openBillingPrint(
       </div>
 
       ${
-        vatRows.length
+        showVatSummary && vatRows.length
           ? `
-          <div class="section-title">VAT Summary</div>
           <table class="vat-table">
             <thead>
               <tr>
@@ -385,20 +535,40 @@ export function openBillingPrint(
 
       <div class="divider"></div>
 
-      <div class="footer-note">
-        ${escapeHtml(footerText)}
-      </div>
-
+      <div class="footer-note">${escapeHtml(footerText)}</div>
       ${
         billing.notes
           ? `<div class="footer-note">${escapeHtml(billing.notes)}</div>`
           : ''
       }
 
-      <div class="barcode-wrap">
-        <svg id="receipt-barcode"></svg>
-        <div class="barcode-text">${escapeHtml(barcodeValue)}</div>
-      </div>
+      ${
+        showBarcode || showQrCode
+          ? `
+          <div class="codes-wrap">
+                      ${
+              showQrCode
+                ? `
+                <div class="qrcode-wrap">
+                  <img id="receipt-qrcode" class="qrcode-image" alt="QR Code" />
+                </div>
+              `
+                : ''
+            }
+            ${
+              showBarcode
+                ? `
+                <div class="barcode-wrap">
+                  <svg id="receipt-barcode"></svg>
+                  <div class="barcode-text">${escapeHtml(barcodeValue)}</div>
+                </div>
+              `
+                : ''
+            }
+          </div>
+        `
+          : ''
+      }
     </body>
   </html>`;
 
@@ -409,22 +579,36 @@ export function openBillingPrint(
   printWindow.document.write(html);
   printWindow.document.close();
 
-  printWindow.onload = () => {
-    const svg = printWindow.document.getElementById('receipt-barcode');
+  printWindow.onload = async () => {
+    try {
+      const svg = printWindow.document.getElementById('receipt-barcode');
+      const qrImage = printWindow.document.getElementById('receipt-qrcode');
 
-    if (svg) {
-      JsBarcode(svg, barcodeValue, {
-        format: 'CODE128',
-        displayValue: false,
-        width: 1.4,
-        height: 42,
-        margin: 0,
-      });
+      if (svg && showBarcode) {
+        JsBarcode(svg, barcodeValue, {
+          format: 'CODE128',
+          displayValue: false,
+          width: 1.4,
+          height: 42,
+          margin: 0,
+        });
+      }
+
+      if (qrImage && showQrCode) {
+        const dataUrl = await QRCode.toDataURL(qrUrl, {
+          width: 140,
+          margin: 1,
+          errorCorrectionLevel: 'M',
+        });
+        qrImage.src = dataUrl;
+      }
+    } catch (error) {
+      console.error('Print code generation failed:', error);
     }
 
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
-    }, 300);
+    }, Number(settings.print_delay_ms || 300));
   };
 }

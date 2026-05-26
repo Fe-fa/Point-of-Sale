@@ -3,7 +3,12 @@ import Modal from '../../components/common/Modal';
 import { useStore } from '../../contexts/StoreContext';
 import { billingService } from '../../services/billingService';
 import { currency, formatDateTime } from '../../utils/helpers';
-import { openBillingPrint } from '../../utils/print';
+// import { openBillingPrint } from '../../utils/print';
+import { mergeStoreSettings } from '../../utils/storeSettings';
+import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
+
+
+
 
 const extractList = (response) => {
   if (Array.isArray(response?.data?.data?.data)) return response.data.data.data;
@@ -32,6 +37,9 @@ const getLatestPayment = (billing) => {
 export default function AdminBillingsPage() {
   const { stores, storeId } = useStore();
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
+  const printSettings = mergeStoreSettings(currentStore);
+
+
 
   const [billings, setBillings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -115,7 +123,7 @@ export default function AdminBillingsPage() {
     } catch (err) {
       setError(
         err?.response?.data?.message ||
-          'Unable to load billing detail. If this billing is trashed, ensure the backend show endpoint supports soft-deleted records.'
+        'Unable to load billing detail. If this billing is trashed, ensure the backend show endpoint supports soft-deleted records.'
       );
     }
   };
@@ -351,8 +359,8 @@ export default function AdminBillingsPage() {
                   {selectedBilling.deleted_at
                     ? 'trashed'
                     : selectedBilling.is_draft
-                    ? 'draft'
-                    : selectedBilling.status}
+                      ? 'draft'
+                      : selectedBilling.status}
                 </strong>
               </div>
 
@@ -410,9 +418,9 @@ export default function AdminBillingsPage() {
                           {currency(
                             Number(
                               item.total_amount ??
-                                item.line_total ??
-                                item.line_subtotal ??
-                                Number(item.quantity || 0) * Number(item.unit_price || 0)
+                              item.line_total ??
+                              item.line_subtotal ??
+                              Number(item.quantity || 0) * Number(item.unit_price || 0)
                             ),
                             currentStore?.currency
                           )}
@@ -485,18 +493,38 @@ export default function AdminBillingsPage() {
                 <>
                   <button
                     className="primary-button"
-                    onClick={() => openBillingPrint(selectedBilling, currentStore, 'invoice')}
+                    onClick={() =>
+                      openBillingPrint(selectedBilling, currentStore, 'invoice', printSettings)
+                    }
                   >
                     Print invoice
                   </button>
 
+                  <button
+                    className="ghost-button"
+                    onClick={() => downloadBillingDocument(selectedBilling, 'invoice')}
+                  >
+                    Download invoice
+                  </button>
+
                   {selectedBilling.payments?.length ? (
-                    <button
-                      className="ghost-button"
-                      onClick={() => openBillingPrint(selectedBilling, currentStore, 'receipt')}
-                    >
-                      Print receipt
-                    </button>
+                    <>
+                      <button
+                        className="ghost-button"
+                        onClick={() =>
+                          openBillingPrint(selectedBilling, currentStore, 'receipt', printSettings)
+                        }
+                      >
+                        Print receipt
+                      </button>
+
+                      <button
+                        className="ghost-button"
+                        onClick={() => downloadBillingDocument(selectedBilling, 'receipt')}
+                      >
+                        Download receipt
+                      </button>
+                    </>
                   ) : null}
 
                   {selectedBilling.is_draft ? (
@@ -519,6 +547,7 @@ export default function AdminBillingsPage() {
                 </button>
               )}
             </div>
+
           </div>
         ) : null}
       </Modal>

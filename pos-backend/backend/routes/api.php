@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\StoreController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AccessControlController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\PublicDocumentController;
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register'])->name('auth.register');
@@ -36,6 +37,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::apiResource('stores', StoreController::class);
+    Route::get('stores/{store}/settings', [StoreController::class, 'settings'])->name('stores.settings');
+    Route::put('stores/{store}/settings', [StoreController::class, 'updateSettings'])->name('stores.settings.update');
+
     Route::apiResource('users', UserController::class);
     Route::post('users/{user}/stores', [UserController::class, 'syncStores'])->name('users.stores.sync');
 
@@ -61,3 +65,11 @@ Route::post('billings/{billing}/items', [BillingItemController::class, 'store'])
 Route::post('billings/{billing}/charge', [PaymentController::class, 'charge'])->name('billings.charge');
 
 });
+Route::get('public/documents/{mode}/{uuid}', [PublicDocumentController::class, 'show'])
+    ->where('mode', 'receipt|invoice')
+    ->name('public.documents.show');
+
+Route::get('public/documents/{mode}/{uuid}/download', [PublicDocumentController::class, 'download'])
+    ->where('mode', 'receipt|invoice')
+    ->name('public.documents.download');
+

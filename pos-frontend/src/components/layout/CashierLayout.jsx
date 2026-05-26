@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useStore } from '../../contexts/StoreContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
+
 export default function CashierLayout() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();

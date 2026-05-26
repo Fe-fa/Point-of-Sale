@@ -26,6 +26,7 @@ class UpdateStoreRequest extends FormRequest
             'physical_address' => ['nullable', 'string', 'max:1000'],
             'email_address' => ['nullable', 'email', 'max:255', Rule::unique('stores', 'email_address')->ignore($storeId, 'store_id')],
             'is_active' => ['nullable', 'boolean'],
+            
         ];
     }
 }

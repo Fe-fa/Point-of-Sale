@@ -23,10 +23,12 @@ class Store extends Model
         'physical_address',
         'email_address',
         'is_active',
+        'settings',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'settings' => 'array',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
