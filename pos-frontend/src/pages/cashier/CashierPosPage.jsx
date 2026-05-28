@@ -9,6 +9,7 @@ import {
   Smartphone,
   Trash2,
   Wallet,
+  Download,
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -66,15 +67,24 @@ const extractPaginator = (res) => {
   return null;
 };
 
-const getProductImage = (product) =>
-  product?.image_url ||
-  product?.product_image ||
-  product?.photo_url ||
-  product?.thumbnail ||
-  product?.image ||
-  product?.photo ||
-  product?.media?.[0]?.url ||
-  '';
+
+const getProductImage = (product) => {
+  const rawPath =
+    product?.image_url ||
+    product?.product_image ||
+    product?.photo_url ||
+    product?.thumbnail ||
+    product?.image ||
+    product?.photo ||
+    product?.media?.[0]?.url ||
+    '';
+  if (!rawPath) return '';
+  if (rawPath.startsWith('http') || rawPath.startsWith('data:')) {
+    return rawPath;
+  }
+  const cleanPath = rawPath.startsWith('/') ? rawPath.substring(1) : rawPath;
+  return `${IMAGE_BASE_URL}${cleanPath}`;
+};
 
 const getItemTotal = (item) =>
   Number(
@@ -247,29 +257,29 @@ export default function CashierPosPage() {
     setCatalogLoading(true);
     setError('');
 
-try {
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('API request timeout after 10 seconds')), 10000)
-    );
+    try {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('API request timeout after 10 seconds')), 10000)
+      );
 
-    // Race the parallel API requests against the 10-second timeout clock
-    const [categoriesRes, customersRes] = await Promise.race([
-      Promise.all([
-        categoryService.list({
-          store_id: Number(storeId),
-          per_page: 12,
-        }),
-        customerService.list({
-          store_id: Number(storeId),
-          per_page: 12,
-        }),
-      ]),
-      timeoutPromise
-    ]);
+      // Race the parallel API requests against the 10-second timeout clock
+      const [categoriesRes, customersRes] = await Promise.race([
+        Promise.all([
+          categoryService.list({
+            store_id: Number(storeId),
+            per_page: 12,
+          }),
+          customerService.list({
+            store_id: Number(storeId),
+            per_page: 12,
+          }),
+        ]),
+        timeoutPromise
+      ]);
 
-    setCategories(extractList(categoriesRes));
-    setCustomers(extractList(customersRes));
-  } catch (err) {
+      setCategories(extractList(categoriesRes));
+      setCustomers(extractList(customersRes));
+    } catch (err) {
       setError(
         `Failed to load catalog: ${err?.response?.data?.message || err?.message || 'Unknown error'
         }`
@@ -366,7 +376,7 @@ try {
     [storeId, activeCategory, debouncedSearch]
   );
 
-const loadDrafts = useCallback(
+  const loadDrafts = useCallback(
     async ({ silent = false } = {}) => {
       if (!storeId) return;
 
@@ -379,7 +389,7 @@ const loadDrafts = useCallback(
         const response = await Promise.race([
           billingService.list({
             store_id: Number(storeId),
-            per_page: 12, 
+            per_page: 12,
             is_draft: true,
           }),
           timeoutPromise
@@ -460,19 +470,19 @@ const loadDrafts = useCallback(
     productCacheRef.current.clear();
     lastProductFilterRef.current = '';
 
-  const initializePosData = async () => {
-    try {
-      await Promise.all([
-        loadStaticData(),
-        loadDrafts({ silent: true }) 
-      ]);
-    } catch (err) {
-      console.error("Failed to initialize baseline POS data:", err);
-    }
-  };
+    const initializePosData = async () => {
+      try {
+        await Promise.all([
+          loadStaticData(),
+          loadDrafts({ silent: true })
+        ]);
+      } catch (err) {
+        console.error("Failed to initialize baseline POS data:", err);
+      }
+    };
 
-  initializePosData();
-}, [storeId, loadStaticData, loadDrafts]);
+    initializePosData();
+  }, [storeId, loadStaticData, loadDrafts]);
 
   useEffect(() => {
     if (!storeId) return;
@@ -983,12 +993,17 @@ const loadDrafts = useCallback(
           <div className="card hero-card compact-hero">
             <div className="store-header-layout">
               <div className="store-brand-identity">
-                <span className="eyebrow">{user?.role || currentStore?.role || 'Cashier'}</span>
-                <h2 className="store-title">{currentStore?.store_name || 'Fortune Supermarket'}</h2>
+                <span className="eyebrow">
+                  {user?.role || currentStore?.role || 'Cashier'}
+                </span>
+                <h2 className="store-title">
+                  {currentStore?.store_name || 'Fortune Supermarket'}
+                </h2>
               </div>
-
               <div className="store-contact-meta">
-                <span className="meta-location">{currentStore?.location || 'Store Location'}</span>
+                <span className="meta-location">
+                  {currentStore?.location || 'Store Location'}
+                </span>
                 <p className="meta-address">
                   {currentStore?.physical_address || 'Physical address not available'}
                 </p>
@@ -998,12 +1013,13 @@ const loadDrafts = useCallback(
                   {currentStore?.email_address || ''}
                 </p>
               </div>
+
             </div>
           </div>
 
           <div className="toolbar-row pos-toolbar-wrap">
             <div className="search-shell">
-              <Search size={16} />
+              <Search className="search-icon-pos" size={16} />
               <input
                 ref={searchInputRef}
                 value={search}
@@ -1049,33 +1065,22 @@ const loadDrafts = useCallback(
                   const image = getProductImage(product);
 
                   return (
-                    <article
-                      key={product.product_id}
-                      className="product-card product-card-image"
-                      style={{
-                        backgroundImage: image
-                          ? `linear-gradient(180deg, rgba(3, 7, 18, 0.08) 0%, rgba(3, 7, 18, 0.82) 100%), url(${image})`
-                          : 'linear-gradient(135deg, #1e1b4b 0%, #5b21b6 52%, #f59e0b 100%)',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                      }}
-                    >
-                      <div className="product-card-overlay">
-                        <div className="product-card-meta">
-                          <span className="product-category badge-on-image">
-                            {product.category?.category_name || 'Product'}
-                          </span>
-                        </div>
-
-                        <div className="product-card-info">
-                          <h3>{product.product_name}</h3>
-                          <strong>{currency(product.price, currentStore?.currency)}</strong>
-                        </div>
-
+                    <article key={product.product_id} className="product-card">
+                      <div
+                        className="product-card-overlay"
+                        style={{
+                          backgroundImage: image
+                            ? `url(${image})`
+                            : `linear-gradient(135deg, #427E97 0%, #E17A38 100%)`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          backgroundRepeat: 'no-repeat',
+                        }}
+                      >
                         <div className="product-card-actions">
                           <button
                             type="button"
-                            className="primary-button"
+                            className="primary-button pay-now-btn"
                             disabled={submitting}
                             onClick={() => handlePayNow(product)}
                           >
@@ -1085,7 +1090,7 @@ const loadDrafts = useCallback(
 
                           <button
                             type="button"
-                            className="ghost-button product-add-button"
+                            className="ghost-button add-btn"
                             disabled={submitting}
                             onClick={() => handleAddProduct(product)}
                           >
@@ -1093,6 +1098,10 @@ const loadDrafts = useCallback(
                             Add
                           </button>
                         </div>
+                      </div>
+                      <div className="product-card-info">
+                        <h3>{product.product_name}</h3>
+                        <strong>{currency(product.price, currentStore?.currency)}</strong>
                       </div>
                     </article>
                   );
@@ -1178,7 +1187,7 @@ const loadDrafts = useCallback(
         </div>
 
         <aside className="billing-panel stack-md">
-          <div className="card">
+          <div className="card billing-sidebar-card">
             <div className="card-header">
               <div>
                 <h3>Current billing</h3>
@@ -1189,15 +1198,14 @@ const loadDrafts = useCallback(
 
               <div className="cart-badge">
                 <ShoppingCart size={16} />
-                {itemCount} items
+                <span>{itemCount} items</span>
               </div>
             </div>
-
             <div className="customer-billing-section">
               {selectedCustomerId ? (
                 <div className="selected-customer-box">
                   <div className="customer-meta">
-                    <span className="meta-label">Customer / Client</span>
+                    <span className="meta-label">Customer</span>
                     <strong>
                       {customers.find(
                         (c) => String(c.customer_id) === String(selectedCustomerId)
@@ -1221,7 +1229,7 @@ const loadDrafts = useCallback(
                       value={selectedCustomerId}
                       onChange={(e) => setSelectedCustomerId(e.target.value)}
                     >
-                      <option value="">Customer (Default)</option>
+                      <option value="">Customer</option>
                       {customers.map((customer) => (
                         <option key={customer.customer_id} value={customer.customer_id}>
                           {customer.full_name}
@@ -1232,11 +1240,10 @@ const loadDrafts = useCallback(
                 </div>
               )}
             </div>
-
             <div className="hero-quick-actions">
               <button
                 type="button"
-                className="ghost-button"
+                className="ghost-button view-drafts-btn"
                 onClick={async () => {
                   setShowDraftModal(true);
                   await loadDrafts();
@@ -1245,18 +1252,59 @@ const loadDrafts = useCallback(
                 <FolderClock size={16} />
                 Drafts ({drafts.length})
               </button>
-              {draftsLoading ? <span className="muted inline-note">Refreshing drafts...</span> : null}
+
+              {draftsLoading && (
+                <span className="inline-note-spinner">
+                  Refreshing drafts...
+                </span>
+              )}
             </div>
+
           </div>
 
           <div className="card">
-            <div className="card-header">
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <h3>Billing items</h3>
                 {billingLoading ? <p>Refreshing billing...</p> : null}
               </div>
-            </div>
+              <div className="header-action-icons-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={!billing?.items?.length || submitting}
+                  onClick={handleSaveOrUpdateDraft}
+                  title={billing?.billing_id ? 'Update Draft' : 'Save Draft'}
+                  style={{ padding: '6px', minWidth: 'auto' }}
+                >
+                  <FolderClock size={16} />
+                </button>
 
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() =>
+                    billing && openBillingPrint(billing, currentStore, 'invoice', printSettings)
+                  }
+                  disabled={!billing}
+                  title="Print"
+                  style={{ padding: '6px', minWidth: 'auto' }}
+                >
+                  <Printer size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => billing && downloadBillingDocument(billing, 'invoice')}
+                  disabled={!billing}
+                  title="Download"
+                  style={{ padding: '6px', minWidth: 'auto' }}
+                >
+                  <Download size={16} />
+                </button>
+              </div>
+            </div>
             <div className="billing-items-list">
               {billing?.items?.length ? (
                 billing.items.map((item) => (
@@ -1269,7 +1317,6 @@ const loadDrafts = useCallback(
                         </span>
                       </div>
                     </div>
-
                     <div className="billing-item-actions">
                       <div className="quantity-control">
                         <button
@@ -1306,14 +1353,51 @@ const loadDrafts = useCallback(
                         <Trash2 size={14} />
                       </button>
                     </div>
+
                   </div>
                 ))
               ) : (
-                <p className="muted">Add products to start billing.</p>
+                <p className="muted">Hover a product to add it...</p>
               )}
             </div>
+            <div className="billing-summary-container">
+              <div className="billing-summary-list">
+                <div className="summary-row">
+                  <span className="summary-label">Net Amount</span>
+                  <span className="summary-value">
+                    {currency(billing?.subtotal || 0, currentStore?.currency)}
+                  </span>
+                </div>
 
-            <div className="billing-summary-grid medium-layout">
+                <div className="summary-row">
+                  <span className="summary-label">VAT ({Number(billing?.vat_rate || 16)}%)</span>
+                  <span className="summary-value">
+                    {currency(billing?.vat_amount || 0, currentStore?.currency)}
+                  </span>
+                </div>
+                <div className="summary-divider"></div>
+                <div className="summary-row total-accent-row">
+                  <span className="total-label">Total Amount</span>
+                  <strong className="total-value">
+                    {currency(billing?.total || 0, currentStore?.currency)}
+                  </strong>
+                </div>
+              </div>
+            </div>
+            <div className="billing-bottom-actions">
+              <button
+                type="button"
+                className="primary-button"
+                disabled={!billing?.items?.length || submitting}
+                onClick={handleProceedToPayment}
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                Proceed to Payment
+              </button>
+            </div>
+          </div>
+
+          {/* <div className="billing-summary-grid medium-layout">
               <div className="summary-box">
                 <span>Net Amount</span>
                 <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
@@ -1328,52 +1412,7 @@ const loadDrafts = useCallback(
                 <span>Total Amount</span>
                 <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
               </div>
-            </div>
-
-            <div className="billing-bottom-actions">
-              <button
-                type="button"
-                className="ghost-button"
-                disabled={!billing?.items?.length || submitting}
-                onClick={handleSaveOrUpdateDraft}
-              >
-                <FolderClock size={16} />
-                {billing?.billing_id ? 'Update Draft' : 'Save Draft'}
-              </button>
-
-              <button
-                type="button"
-                className="primary-button"
-                disabled={!billing?.items?.length || submitting}
-                onClick={handleProceedToPayment}
-              >
-                <CreditCard size={16} />
-                Pay now
-              </button>
-
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() =>
-                  billing && openBillingPrint(billing, currentStore, 'invoice', printSettings)
-                }
-                disabled={!billing}
-              >
-                <Printer size={16} />
-                Print
-              </button>
-
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => billing && downloadBillingDocument(billing, 'invoice')}
-                disabled={!billing}
-              >
-                Download
-              </button>
-            </div>
-
-          </div>
+            </div> */}
         </aside>
       </section>
 
@@ -1399,7 +1438,7 @@ const loadDrafts = useCallback(
             <div className="modal-content payment-modal-content">
               <div className="payment-summary-strip">
                 <div className="payment-summary-pill">
-                  <span>Total due</span>
+                  <span>To tal due</span>
                   <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
                 </div>
 

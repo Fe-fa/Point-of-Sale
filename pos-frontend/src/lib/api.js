@@ -27,7 +27,16 @@ api.interceptors.request.use((config) => {
     config.headers['X-Store-Id'] = storeId;
   }
 
+  // --- THE FIX ---
+  // If we are sending FormData (file uploads), remove the default JSON Content-Type.
+  // This allows Axios/the browser to auto-detect and set the correct multi-part boundary.
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type'];
+  }
+
   return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 export default api;

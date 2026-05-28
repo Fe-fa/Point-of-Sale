@@ -342,67 +342,85 @@ const handleSubmit = async (e) => {
                     <td colSpan="6">Loading...</td>
                   </tr>
                 ) : products.length ? (
-                  products.map((product) => (
-                    <tr key={product.product_id}>
-                      <td>
-                        {product.image_url ? (
-                          <img
-                            src={product.image_url}
-                            alt={product.product_name}
-                            style={{
-                              width: 56,
-                              height: 56,
-                              objectFit: 'cover',
-                              borderRadius: 12,
-                              border: '1px solid var(--line)',
-                              background: 'var(--panel-2)',
-                            }}
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="muted">No image</div>
-                        )}
-                      </td>
+products.map((product) => {
+  // Determine the correct image source fallback chain
+  let imageSource = null;
+  
+  if (product.image_url) {
+    imageSource = product.image_url;
+  } else if (product.image) {
+    // If it's a relative path from the DB (e.g. "products/xyz.jpg"), prepend the storage URL
+    imageSource = product.image.startsWith('http') 
+      ? product.image 
+      : `${IMAGE_BASE_URL}${product.image}`;
+  }
 
-                      <td>
-                        <strong>{product.product_name}</strong>
-                        <div className="muted">{product.sku}</div>
-                      </td>
+  return (
+    <tr key={product.product_id}>
+      <td>
+        {imageSource ? (
+          <img
+            src={imageSource}
+            alt={product.product_name}
+            style={{
+              width: 56,
+              height: 56,
+              objectFit: 'cover',
+              borderRadius: 12,
+              border: '1px solid var(--line)',
+              background: 'var(--panel-2)',
+            }}
+            onError={(e) => {
+              // Instead of hiding it completely, you can log it or substitute a clean fallback icon
+              console.warn(`Failed to load image: ${imageSource}`);
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="muted" style={{ fontSize: '12px', textAlign: 'center', width: 56 }}>
+            No image
+          </div>
+        )}
+      </td>
 
-                      <td>{product.category?.category_name || '-'}</td>
+      <td>
+        <strong>{product.product_name}</strong>
+        <div className="muted">{product.sku}</div>
+      </td>
 
-                      <td>
-                        <div>{currency(product.price, currentStore?.currency)}</div>
-                        <div className="muted">Cost {currency(product.cost_price, currentStore?.currency)}</div>
-                        <div className="muted">
-                          {Number(product.vat_rate || 0) > 0 ? `VAT ${Number(product.vat_rate || 0)}%` : 'No VAT'}
-                        </div>
-                      </td>
+      <td>{product.category?.category_name || '-'}</td>
 
-                      <td>
-                        <span className={`status-badge ${product.is_active ? 'paid' : 'draft'}`}>
-                          {product.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
+      <td>
+        <div>{currency(product.price, currentStore?.currency)}</div>
+        <div className="muted">Cost {currency(product.cost_price, currentStore?.currency)}</div>
+        <div className="muted">
+          {Number(product.vat_rate || 0) > 0 ? `VAT ${Number(product.vat_rate || 0)}%` : 'No VAT'}
+        </div>
+      </td>
 
-                      <td>
-                        <div className="row-actions compact">
-                          <button type="button" className="ghost-button" onClick={() => handleEdit(product)}>
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost-button danger"
-                            onClick={() => handleDelete(product.product_id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+      <td>
+        <span className={`status-badge ${product.is_active ? 'paid' : 'draft'}`}>
+          {product.is_active ? 'Active' : 'Inactive'}
+        </span>
+      </td>
+
+      <td>
+        <div className="row-actions compact">
+          <button type="button" className="ghost-button" onClick={() => handleEdit(product)}>
+            Edit
+          </button>
+          <button
+            type="button"
+            className="ghost-button danger"
+            onClick={() => handleDelete(product.product_id)}
+          >
+            Delete
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+})
                 ) : (
                   <tr>
                     <td colSpan="6">No products found.</td>

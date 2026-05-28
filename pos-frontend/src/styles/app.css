@@ -249,72 +249,111 @@ img {
 .store-header-layout {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  gap: 2rem;
-  width: 100%;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
 .store-brand-identity {
-  display: flex;
+display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 6px;
+  flex: 1;
+  min-width: 250px;
 }
 
+/* The small indicator tag above the main heading */
 .store-brand-identity .eyebrow {
-  display: inline-block;
-  color: var(--primary, #5046e5);
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-weight: 800;
-  margin: 0;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  /* Brand-aligned interactive orange contrast */
+  color: #FA7316; 
+  background-color: rgba(255, 255, 255, 0.95);
+  padding: 4px 10px;
+  border-radius: 20px;
+  width: fit-content;
+  box-shadow: 0 2px 4px rgba(45, 55, 72, 0.05);
 }
 
-.store-brand-identity .store-title {
+.store-title {
   margin: 0;
-  font-size: 1.65rem;
-  font-weight: 800;
-  color: #111827;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #4F8CA6; /* Clean White as specified */
+  font-size: 1.75rem;
+  font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.25;
+  text-shadow: 0 2px 8px rgba(45, 55, 72, 0.15);
 }
 
 .store-contact-meta {
   display: flex;
   flex-direction: column;
+  gap: 6px;
   align-items: flex-end;
   text-align: right;
-  gap: 0.2rem;
+  flex: 1;
+  min-width: 280px;
 }
 
-.store-contact-meta .meta-location {
+.meta-location {
+ font-size: 0.8rem;
   font-weight: 600;
-  color: #374151;
-  font-size: 0.95rem;
+  color: #4F8CA6; /* Light Gray Background palette color repurposed for crisp text readability */
+  padding: 4px 10px;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
 }
 
-.store-contact-meta .meta-address,
-.store-contact-meta .meta-communication {
+.meta-address{
   margin: 0;
   font-size: 0.9rem;
-  color: #6b7280;
+  color: #4F8CA6; /* Clean soft light gray tint */
   font-weight: 400;
+  line-height: 1.4;
+}
+.meta-communication {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #4F8CA6; /* Slightly transparent light gray */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
-.store-contact-meta .meta-divider {
-  margin: 0 0.5rem;
-  color: #d1d5db;
+.meta-divider {
+  color: rgba(79, 140, 166, 0.4);
+  font-weight: 300;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
+  .compact-hero {
+    padding: 18px;
+  }
+  
   .store-header-layout {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 1.25rem;
+    gap: 16px;
   }
-
+  
   .store-contact-meta {
     align-items: flex-start;
     text-align: left;
+    width: 100%;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding-top: 14px;
+  }
+  
+  .meta-communication {
+    justify-content: flex-start;
+  }
+  
+  .store-title {
+    font-size: 1.5rem;
   }
 }
 
@@ -357,7 +396,7 @@ img {
 .cashier-topbar {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
+  gap: 10px;
   align-items: center;
   padding: 26px 28px 0;
 }
@@ -385,13 +424,21 @@ img {
 
 .topbar-actions,
 .cashier-tools,
-.row-actions,
-.chips-row,
-.hero-quick-actions {
+.row-actions{
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.hero-quick-actions{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background-color: #F3F4F6; /* Inactive filter light gray background variation */
+  gap: 12px;
+  flex-wrap: wrap;
+
 }
 
 .cashier-user,
@@ -416,11 +463,11 @@ img {
 }
 
 .list-stack,
-.billing-items-list,
 .draft-list {
   display: grid;
   gap: 12px;
 }
+
 
 .dashboard-grid {
   display: grid;
@@ -480,7 +527,6 @@ img {
 .card,
 .hero-card,
 .metric-card,
-.product-card,
 .draft-row {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -497,28 +543,78 @@ img {
   background: #ffffff;
 }
 
+/* ==========================================
+   1. HERO CARD CONTAINER
+   ========================================== */
 .compact-hero {
-  padding: 18px 20px;
+  /* Smooth horizontal transition using the platform's exact banner gradient colors */
+  background: linear-gradient(135deg, #427E97 0%, #4F8CA6 40%, #E17A38 85%, #E36925 100%);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 10px 25px -5px rgba(66, 126, 151, 0.25);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  width: 100%;
 }
 
+/* Subtle background accent pattern to give the hero layout depth */
+.compact-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(250, 115, 22, 0.2) 0%, transparent 70%);
+  pointer-events: none;
+}
+.billing-sidebar-card {
+  display: flex;
+  flex-direction: column;
+  background-color: #FFFFFF;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px -2px rgba(45, 55, 72, 0.05); /* Soft Charcoal Tint shadow */
+  overflow: hidden;
+  width: 100%;
+}
+
+/* ==========================================
+   CARDS & WRAPPERS: BILLING HEADER
+   ========================================== */
 .card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 16px;
+  padding: 16px 20px;
+  background-color: #FFFFFF;
+  gap: 16px;
 }
 
 .card-header h3 {
-  font-size: 1.03rem;
-  color: var(--text);
-  margin-bottom: 4px;
+  margin: 0 0 2px 0;
+  color: #2D3748; /* Dark Charcoal Text */
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
+
 
 .card-header p {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.45;
+}
+@media (max-width: 480px) {
+  .card-header {
+    padding: 14px 16px;
+  }
+  
+  .card-header h3 {
+    font-size: 1rem;
+  }
 }
 
 .info-panel {
@@ -563,64 +659,74 @@ img {
   border-color: #f5c2c2;
 }
 /* Context wrapper spacing */
+/* /billing*/
 .customer-billing-section {
-  padding: 4px 0 16px 0;
+ width: 100%;
+  padding: 16px;
+  background-color: #FFFFFF;
 }
 
 /* Selected display row */
 .selected-customer-box {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: #f8fafc; /* Very light neutral tint */
-  border: 1px dashed #cbd5e1;
-  padding: 10px 14px;
-  border-radius: 8px;
+  justify-content: space-between;
+  background-color: #F8FAFC; /* Light Gray Form Input Background */
+  border: 1px solid #CBD5E1; /* Muted Gray Border */
+  border-radius: 10px;
+  padding: 12px 16px;
+  gap: 16px;
 }
 
 .customer-meta {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .customer-meta .meta-label {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
+  color: #9CA3AF; /* Muted Gray Text label */
+  font-weight: 700;
 }
 
 .customer-meta strong {
-  font-size: 14px;
-  color: #1e293b;
+  font-size: 0.95rem;
+  color: #2D3748; /* Dark Charcoal for highly readable customer name */
+  font-weight: 600;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Text link button to swap customers back out */
+/* Action button to reset state */
 .change-customer-btn {
-  background: transparent;
-  border: none;
-  color: #4f46e5; /* Match your app theme's primary interactive color */
+  background-color: transparent;
+  color: #FA7316; /* Vibrant Brand Orange action color */
+  border: 1px solid #FA7316;
+  padding: 6px 12px;
+  font-size: 0.78rem;
   font-weight: 600;
-  font-size: 13px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 4px 8px;
+  transition: all 0.15s ease;
 }
 
 .change-customer-btn:hover {
-  text-decoration: underline;
+  background-color: #FA7316;
+  color: #FFFFFF; /* High-contrast reverse style on focus hover */
+  box-shadow: 0 2px 6px rgba(250, 115, 22, 0.2);
 }
 
 .invoice-subtext {
-  font-size: 13px;
-  color: #64748b;
-  margin-top: 2px;
+  margin: 0;
+  font-size: 0.82rem;
+  color: #9CA3AF; /* Muted Gray Subtext */
+  font-weight: 500;
 }
 
 /* Container layout adjustment */
 .list-row,
-.billing-item-row,
 .draft-row {
   display: flex;
   justify-content: space-between;
@@ -631,44 +737,145 @@ img {
   background: #ffffff;
   border: 1px solid #e8ebee;
 }
+.billing-items-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background-color: #FFFFFF;
+  max-height: 400px; /* Limits growth; seamlessly handles overflow */
+  overflow-y: auto;
+}
+
+/* Empty fallback notification view styling */
+.billing-items-list .muted {
+  margin: 0;
+  padding: 40px 20px;
+  text-align: center;
+  font-size: 0.88rem;
+  color: #9CA3AF; /* Muted Gray text label */
+  font-weight: 500;
+}
+.billing-item-row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #F3F4F6; /* Clean soft background cut line */
+  gap: 16px;
+  transition: background-color 0.15s ease;
+}
+.billing-item-row:hover {
+  background-color: #F8FAFC; /* Light gray row background pop on mouse hover */
+}
+.billing-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0; /* Important container safety rule to prevent flex overflows */
+}
+.product-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2D3748; /* Highly readable Dark Charcoal */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
 
 /* Meta layout wrapper for elements under product name */
 .vat-meta-wrapper {
-  margin-top: 4px;
+  display: flex;
+  align-items: center;
 }
 
 /* Sleek Pill Badge style for VAT Rate */
 .vat-badge {
-  display: inline-block;
-  background-color: #f3f4f6; /* Soft light grey background */
-  color: #4b5563;            /* Dark slate grey text */
-  font-size: 11px;
+font-size: 0.72rem;
   font-weight: 600;
+  background-color: #F3F4F6; /* Subtle light gray pill container */
+  color: #9CA3AF; /* Crisp Muted Gray Text */
   padding: 2px 6px;
   border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 
 /* Aligns counter controls and actions side-by-side */
 .billing-item-actions {
-  display: flex;
+display: flex;
   align-items: center;
-  gap: 16px; /* Spacing between: [ - 1 + ] [ Price ] [ Trash ] */
+  gap: 16px;
 }
 
 /* Aligns counter controls cleanly */
 .quantity-control {
   display: flex;
   align-items: center;
-  gap: 8px;
+  background-color: #F8FAFC; /* Light gray wrapper frame background */
+  border: 1px solid #CBD5E1; /* Muted Gray Ring border line */
+  border-radius: 6px;
+  padding: 2px;
+}
+.quantity-control .icon-button {
+  background: transparent;
+  border: none;
+  color: #427E97; /* Deep Muted Teal interactive graphic markers */
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.quantity-control .icon-button:hover:not(:disabled) {
+  background-color: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(45, 55, 72, 0.08);
+  color: #4F8CA6;
+}
+.quantity-display {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #2D3748;
+  min-width: 24px;
+  text-align: center;
 }
 
 .line-total {
-  min-width: 90px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #2D3748; /* Bold Dark Charcoal text string layout */
+  min-width: 75px;
   text-align: right;
-  font-size: 15px;
-  font-weight: 600; /* Makes the currency total stand out clearly */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+/* Isolated Deletion Override Style Module */
+.billing-item-actions .icon-button.danger-icon {
+  background: transparent;
+  border: none;
+  color: #CBD5E1; /* Inactive subtle gray baseline setting */
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.billing-item-actions .icon-button.danger-icon:hover:not(:disabled) {
+  color: #E36925; /* Vibrant Orange/Coral highlight flare alert on destructive trigger hover */
+  background-color: rgba(227, 105, 37, 0.08);
+}
+
+/* System disabling state filters */
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
 }
 
 .list-row p,
@@ -817,8 +1024,7 @@ img {
   color: #4f5660;
 }
 .form-grid {
-  display: grid;
-  gap: 16px;
+width: 100%;
 }
 
 .form-grid.two-columns,
@@ -828,12 +1034,13 @@ img {
   gap: 16px;
 }
 
-label {
-  display: grid;
-  gap: 8px;
-  color: #4f5660;
-  font-size: 0.92rem;
-  font-weight: 500;
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2D3748; /* Dark Charcoal label styling */
 }
 
 .text-input,
@@ -861,16 +1068,39 @@ textarea::placeholder {
 }
 
 .select-input {
+width: 100%;
+  height: 40px;
+  background-color: #F8FAFC; /* Light gray selector drop container background */
+  border: 1px solid #CBD5E1; /* Muted gray border ring */
+  color: #2D3748;
+  font-size: 0.88rem;
+  font-weight: 500;
+  padding: 0 12px;
+  border-radius: 8px;
+  outline: none;
   cursor: pointer;
-  padding-right: 40px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  font-family: inherit;
+  transition: all 0.2s ease;
+  
+  /* Custom modern arrow setup replacement properties */
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232D3748' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
   background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 15px;
+  background-position: right 10px center;
+  background-size: 16px;
+}
+.select-input:focus {
+  border-color: #4F8CA6; /* Highlights into Deep Muted Teal on selection click */
+  box-shadow: 0 0 0 3px rgba(79, 140, 166, 0.15);
+  background-color: #FFFFFF;
+}
+
+.select-input option {
+  color: #2D3748;
+  background-color: #FFFFFF;
 }
 
 .text-input:focus,
-.select-input:focus,
 textarea:focus {
   outline: none;
   border-color: #bcbfc4;
@@ -941,7 +1171,7 @@ textarea:focus {
 
 .primary-button:hover,
 .catalog-primary-btn:hover {
-  background: #584fc7;
+  background: #38c549;
   transform: translateY(-1px);
   box-shadow: 0 12px 24px rgba(109, 99, 216, 0.2);
 }
@@ -953,6 +1183,7 @@ textarea:focus {
   transform: none;
   box-shadow: none;
 }
+
 
 .ghost-button,
 .icon-button,
@@ -1011,16 +1242,49 @@ textarea:focus {
   border-color: #e89a9a;
   color: #b02525;
 }
+.chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;                  /* Clean spacing between options */
+  width: 100%;
+  padding: 4px 0;
+}
 
 .chip {
-  padding: 10px 14px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;                   /* Perfect spacing for the dynamic icon */
+  padding: 8px 16px;          /* Balanced padding for a soft clickable capsule shape */
+  background-color: #F8FAFC;  /* Matches your Form Inputs background */
+  color: #2D3748;             /* Matches your Header navigation links text color */
+  border: 1px solid #CBD5E1;  /* Soft, elegant neutral border */
+  border-radius: 999px;       /* Perfect soft capsule radius */
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
   white-space: nowrap;
+  
+  /* Smooth feel on load/state change */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .chip.active {
-  background: #f1f3f5;
-  border-color: #cfd4d9;
+  background-color: #4F8CA6;  /* Primary Deep Teal */
+  border-color: #427E97;
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 4px 10px -2px rgba(66, 126, 151, 0.3);
+}
+.chip.active svg {
+  color: #FFFFFF !important;  /* Ensure white contrast over active teal background */
+}
+
+/* Smooth icon handling inside the layout */
+.chip svg {
+  color: #9CA3AF;             /* Initial soft placeholder gray */
+  flex-shrink: 0;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 
 .danger {
@@ -1365,6 +1629,9 @@ textarea:focus {
   color: var(--text);
   width: 100%;
 }
+.search-shell .hover {
+  color: #727880;
+}
 
 .search-static {
   min-width: 260px;
@@ -1377,14 +1644,25 @@ textarea:focus {
 }
 
 .cart-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  border-radius: 999px;
-  padding: 8px 12px;
-  background: #f3f5f7;
-  border: 1px solid #e2e5e8;
+  gap: 6px;
+  background-color: #4F8CA6; /* Deep Muted Teal Base Primary */
+  color: #FFFFFF;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(79, 140, 166, 0.15);
+  white-space: nowrap;
+  transition: all 0.2s ease;
 }
+
+.cart-badge:hover {
+  background-color: #427E97; /* Deeper Teal on state interaction */
+  box-shadow: 0 4px 12px rgba(66, 126, 151, 0.25);
+}
+
 
 .billing-item-actions {
   display: flex;
@@ -1394,7 +1672,7 @@ textarea:focus {
   justify-content: flex-end;
 }
 
-.billing-summary-grid {
+/* .billing-summary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -1424,8 +1702,70 @@ textarea:focus {
 .summary-box.accent {
   background: #f6f4ff;
   border-color: #ddd8fb;
+} */
+.billing-summary-container {
+  /* background-color: #F8FAFC;         */
+  /* border: 1px solid #CBD5E1;    */
+  /* border-radius: 12px; */
+  padding: 16px;
+  width: 100%;
+  max-width: 380px;                
+  margin-left: auto;               
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.03);
 }
 
+.billing-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Flex row setup mapping text components to opposite sides */
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.summary-label {
+  color: #64748b;                  /* Muted typography for supporting parameters */
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.summary-value {
+  color: #2D3748;                  /* Clear dark charcoal branding hierarchy value color */
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+/* Ledger line breakpoint divider rule */
+.summary-divider {
+  height: 1px;
+  background-color: #CBD5E1;        /* Matches the soft neutral boundary border elements */
+  margin: 4px 0;
+  width: 100%;
+}
+
+/* Accent Highlight State for Grand Totals */
+.summary-row.total-accent-row {
+  padding-top: 4px;
+}
+
+.total-label {
+  color: #427E97;                  /* Your deep muted brand teal for premium identification */
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.total-value {
+  color: #E36925;                  /* High contrast vibrant orange signature accent color */
+  font-size: 1.35rem;              /* Noticeably enlarged to anchor user view instantly */
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
 /* ==========================================================================
    1. Summary Grid (Medium Layout)
    ========================================================================== */
@@ -1484,31 +1824,56 @@ textarea:focus {
   font-weight: 700;
 }
 
-
-/* ==========================================================================
-   2. Action Buttons Layout (Desktop / Default)
-   ========================================================================== */
-
-/* Structured 3-column grid for action buttons */
-.billing-bottom-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-  align-items: stretch;
-  width: 100%;
+.view-drafts-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: transparent;
+  border: 1px solid #CBD5E1;
+  color: #427E97; /* High visibility deep muted teal text marker */
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-/* Base styling for all individual buttons in the action row */
+.view-drafts-btn:hover {
+  background-color: #FFFFFF;
+  border-color: #427E97;
+  color: #427E97;
+  box-shadow: 0 2px 6px rgba(66, 126, 151, 0.1);
+}
+
+.inline-note-spinner {
+  font-size: 0.78rem;
+  color: #9CA3AF; /* Muted Gray placeholder text variation */
+  font-weight: 500;
+  font-style: italic;
+  display: flex;
+  align-items: center;
+}
+.billing-bottom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 16px 20px;
+  background-color: #F3F4F6; 
+  border-top: 1px solid #CBD5E1; 
+  border-bottom-left-radius: 14px; 
+  border-bottom-right-radius: 14px;
+}
 .billing-bottom-actions > button {
   width: 80%;
   min-height: 30px;
   padding: 14px 16px;
   border-radius: 12px;
-  display: flex;            /* Added flex to keep internal icons + text structured */
-  align-items: center;      /* Centers elements vertically */
-  justify-content: center;  /* Centers elements horizontally */
-  gap: 8px;                 /* Spacing between icon and wording */
+  display: flex;          
+  align-items: center;      
+  justify-content: center; 
+  gap: 8px;                 
   text-align: center;
   line-height: 1.2;
   font-weight: 700;
@@ -1517,7 +1882,45 @@ textarea:focus {
 
 /* Ensures checkout remains the focal button layout */
 .billing-bottom-actions .primary-button {
-  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%; /* Spans full card row framework space */
+  height: 44px; /* Comfortable mobile-first finger tap layout target */
+  
+  /* Primary interactive action orange parameters */
+  background-color: #FA7316; 
+  color: #FFFFFF; /* High-contrast white text label */
+  
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(250, 115, 22, 0.15);
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Focus and Action State Hover Modifiers */
+.billing-bottom-actions .primary-button:hover:not(:disabled) {
+  background-color: #E36925; /* Shifts down into deeper gradient coral orange */
+  box-shadow: 0 4px 12px rgba(227, 105, 37, 0.25);
+  transform: translateY(-1px);
+}
+
+.billing-bottom-actions .primary-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(227, 105, 37, 0.15);
+}
+
+/* System Block Disabling Rules */
+.billing-bottom-actions .primary-button:disabled {
+  opacity: 0.5;
+  background-color: #9CA3AF; /* Fallback to muted grey state */
+  color: #F3F4F6;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 
 
@@ -1527,9 +1930,12 @@ textarea:focus {
 
 @media (max-width: 768px) {
   .payment-method-card-grid,
-  .payment-modal-actions,
-  .billing-bottom-actions {
+  .payment-modal-actions
+  {
     grid-template-columns: 1fr !important;
+  }
+  .billing-bottom-actions {
+    padding: 12px 16px;
   }
   .billing-summary-grid.medium-layout .summary-box strong {
     font-size: 16px; /* Restores size if screen is wide enough */
@@ -1540,134 +1946,219 @@ textarea:focus {
     min-height: 30px;
   }
 }
-
 .draft-row {
   width: 100%;
   text-align: left;
 }
+/* ==========================================
+   POS TOOLBAR & SEARCH SHELL
+   ========================================== */
+.pos-toolbar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.search-shell {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  padding: 0 12px;
+  gap: 8px;
+  height: 38px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Neutral search icon base color */
+.search-icon-pos {
+  color: #64748b;
+  transition: color 0.2s ease;
+}
+
+/* Hover behaviors utilizing requested colors */
+.search-shell:hover {
+  border-color: #4F8CA6; /* #4F8CA6 applied on search container hover */
+}
+
+.search-shell:hover .search-icon-pos {
+  color: #E36925;        /* #E36925 applied on search icon hover */
+}
+
+/* Focus styles matching the hover design language */
+.search-shell:focus-within {
+  border-color: #4F8CA6;
+  box-shadow: 0 0 0 2px rgba(79, 140, 166, 0.15);
+}
+
+.search-shell:focus-within .search-icon-pos {
+  color: #E36925;
+}
+
+.search-shell input {
+  border: none;
+  outline: none;
+  width: 100%;
+  font-size: 0.88rem;
+  color: #0f172a;
+  background: transparent;
+}
 .products-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px; 
+  width: 100%;
 }
 
 .products-grid-enhanced {
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 18px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
 }
 
+
 .product-card {
-  padding: 18px;
-  text-align: left;
-  display: grid;
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
+  background-color: #FFFFFF; 
+  border-radius: 2px;          
+  border: 1px solid #CBD5E1; 
+  padding: 8px;                
+  overflow: hidden;
+  width: 100%;
+  max-width: 190px;            
+  margin: 0 auto;            
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.2s ease;
 }
 
 .product-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px -6px rgba(45, 55, 72, 0.2); 
+  border-color: #4F8CA6; 
 }
-
-.product-card h3 {
-  font-size: 1.04rem;
-  margin: 6px 0;
-}
-
 .product-card p,
 .product-category {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.product-card strong {
-  font-size: 1.02rem;
+  color: #9CA3AF;
+  font-size: 0.8rem;
 }
 
 .product-card-image {
   position: relative;
-  min-height: 250px;
-  padding: 0;
-  overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
   box-shadow: var(--shadow-soft);
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
 }
-
-.product-card-image:hover {
-  transform: translateY(-3px);
-}
-
 .product-card-overlay {
-  min-height: 250px;
+  height: 170px;     
+  width: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 16px;
-  color: #fff;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.72) 100%);
+  justify-content: flex-end; 
+  border-radius: 2px;         
+  overflow: hidden;
+  position: relative;
 }
 
-.product-card-meta {
+.product-card-info {
+  padding: 8px 2px 2px 2px;   
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  align-items: flex-start;
-  flex-wrap: wrap;
-}
-
-.badge-on-image {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(6px);
-  color: #fff !important;
-  font-size: 12px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .product-card-info h3 {
-  margin: 0 0 8px;
-  color: #fff;
-  font-size: 1.05rem;
-  line-height: 1.35;
+  margin: 0;
+  color: #2D3748;             
+  font-size: 0.82rem;          
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
 }
 
 .product-card-info strong {
-  font-size: 1.12rem;
-  color: #fff;
+  font-size: 0.7rem;         
+  font-weight: 700;
+  color: #2D3748;              
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
 }
-
 .product-card-actions {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* background: rgba(45, 55, 72, 0.85);  */
   display: flex;
-  gap: 10px;
+  flex-direction: row;               
+  align-items: center;               
+  justify-content: center;           
+  gap: 4px;                          
+  padding: 6px;
+  
   opacity: 0;
-  transform: translateY(12px);
-  transition: all 0.22s ease;
+  transform: translateY(100%);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
 }
 
-.product-card-image:hover .product-card-actions,
-.product-card-image:focus-within .product-card-actions {
+.product-card:hover .product-card-actions {
   opacity: 1;
   transform: translateY(0);
 }
 
-.product-card-actions .primary-button,
-.product-card-actions .ghost-button {
-  flex: 1;
+.product-card-actions button {
+  display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 4px;
+  flex: 1;                           
+  min-width: 0;                      
+  padding: 8px 2px;                 
+  font-size: 0.75rem; 
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;               
+  transition: all 0.15s ease;
+}
+.pay-now-btn {
+  background-color: #FA7316; 
+  color: #FFFFFF;
 }
 
-.product-add-button {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.pay-now-btn:hover {
+  background-color: #E36925;
+}
+.add-btn {
+  background-color: rgba(255, 255, 255, 0.2); 
+  color: #FFFFFF;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.4) !important;
 }
 
-.product-add-button:hover {
-  background: rgba(255, 255, 255, 0.22);
+.add-btn:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
+@media (max-width: 1024px) {
+  .products-grid, .products-grid-enhanced {
+    grid-template-columns: repeat(3, minmax(0, 1fr)); 
+  }
+}
+
+@media (max-width: 640px) {
+  .products-grid, .products-grid-enhanced {
+    grid-template-columns: repeat(3, minmax(0, 1fr)); 
+  }
 }
 .pagination-bar {
   display: flex;
@@ -2408,18 +2899,23 @@ textarea:focus {
 }
 
 @media (max-width: 540px) {
-  .products-grid {
-    grid-template-columns: 1fr;
-  }
-
   .billing-item-row,
   .draft-row,
   .list-row {
+    padding: 12px 14px;
     flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 
   .billing-item-actions {
-    justify-content: flex-start;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .line-total {
+    flex: 1;
+    text-align: right;
+    padding-right: 4px;
   }
 
   .payment-modal-card,
@@ -2776,5 +3272,7 @@ textarea:focus {
     flex-wrap: nowrap;
   }
 }
+
+
 
 }

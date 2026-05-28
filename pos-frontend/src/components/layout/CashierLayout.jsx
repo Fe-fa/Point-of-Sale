@@ -8,8 +8,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 export default function CashierLayout() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
-  
-  // FIX 1: Cleaned up useStore to extract what you need cleanly in one destructure block
   const { activeStore } = useStore(); 
   const { theme, toggleTheme } = useTheme();
 
@@ -21,29 +19,23 @@ export default function CashierLayout() {
       console.error("Logout failed:", err);
     }
   };
-
   const activeStoreName = activeStore?.store_name || 'Assigned store';
-
   return (
     <div className="cashier-shell">
       <header className="cashier-topbar">
         <div className="brand-inline">
           <div className="brand-logo">
-            {/* FIX 2: Switched 'store' to 'activeStore' so it correctly references your state */}
             {activeStore?.logo_url ? (
               <img 
                 src={activeStore.logo_url} 
                 alt={`${activeStoreName} Logo`} 
                 className="store-logo-img"
                 onError={(e) => {
-                  // Fallback to text initials if image fails to load
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'block';
                 }}
               />
             ) : null}
-            
-            {/* Fallback initials display if logo doesn't exist or fails */}
             {!activeStore?.logo_url && <span>SP</span>}
           </div>
           
@@ -54,7 +46,6 @@ export default function CashierLayout() {
         </div>
 
         <div className="cashier-tools">
-          {/* Dynamic Role Badging: Cashier, Admin, Manager */}
           <span className="eyebrow" style={{ marginRight: '10px', textTransform: 'capitalize' }}>
             {user?.role || 'Cashier'}
           </span>
