@@ -39,6 +39,18 @@ class UpdateStoreSettingsRequest extends FormRequest
 
             'settings.paper_width' => ['nullable', 'integer', 'in:58,80'],
             'settings.print_delay_ms' => ['nullable', 'integer', 'min:0', 'max:3000'],
+
+            'document_sequences' => ['nullable', 'array'],
+
+            'document_sequences.invoice' => ['nullable', 'array'],
+            'document_sequences.invoice.prefix' => ['nullable', 'string', 'max:15'],
+            'document_sequences.invoice.suffix' => ['nullable', 'string', 'max:15'],
+            'document_sequences.invoice.last_number' => ['nullable', 'integer', 'min:0'],
+
+            'document_sequences.receipt' => ['nullable', 'array'],
+            'document_sequences.receipt.prefix' => ['nullable', 'string', 'max:15'],
+            'document_sequences.receipt.suffix' => ['nullable', 'string', 'max:15'],
+            'document_sequences.receipt.last_number' => ['nullable', 'integer', 'min:0'],
         ];
     }
 }

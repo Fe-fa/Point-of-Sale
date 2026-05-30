@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useStore } from '../../contexts/StoreContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
-
 export default function CashierLayout() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -19,10 +18,14 @@ export default function CashierLayout() {
       console.error("Logout failed:", err);
     }
   };
+
   const activeStoreName = activeStore?.store_name || 'Assigned store';
+
   return (
     <div className="cashier-shell">
       <header className="cashier-topbar">
+        
+        {/* Left Brand Content Side */}
         <div className="brand-inline">
           <div className="brand-logo">
             {activeStore?.logo_url ? (
@@ -32,7 +35,9 @@ export default function CashierLayout() {
                 className="store-logo-img"
                 onError={(e) => {
                   e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
+                  if (e.target.nextSibling) {
+                    e.target.nextSibling.style.display = 'block';
+                  }
                 }}
               />
             ) : null}
@@ -45,8 +50,9 @@ export default function CashierLayout() {
           </div>
         </div>
 
+        {/* Right Tools Action Side */}
         <div className="cashier-tools">
-          <span className="eyebrow" style={{ marginRight: '10px', textTransform: 'capitalize' }}>
+          <span className="eyebrow">
             {user?.role || 'Cashier'}
           </span>
 
@@ -59,16 +65,19 @@ export default function CashierLayout() {
           </button>
 
           <div className="cashier-user">
-            <UserCircle2 size={25} />
-            {user?.full_name || 'Employee'}
+            <UserCircle2 size={20} />
+            <span>{user?.full_name || 'Employee'}</span>
           </div>
 
           <button type="button" className="ghost-button" onClick={handleLogout}>
-            <LogOut size={16} /> Logout
+            <LogOut size={15} /> 
+            <span>Logout</span>
           </button>
         </div>
+
       </header>
 
+      {/* Main Content Area */}
       <main className="page-content">
         <Outlet />
       </main>

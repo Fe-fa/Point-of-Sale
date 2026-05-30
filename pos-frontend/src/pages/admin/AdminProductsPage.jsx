@@ -4,6 +4,9 @@ import { categoryService } from '../../services/categoryService';
 import { productService } from '../../services/productService';
 import { currency } from '../../utils/helpers';
 import { useStore } from '../../contexts/StoreContext';
+const IMAGE_BASE_URL =
+  import.meta.env.VITE_STORAGE_URL ||
+  `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/storage/`;
 
 const initialForm = {
   category_id: '',
@@ -20,7 +23,36 @@ const initialForm = {
   image_preview: '',
   clear_image: false,
 };
+const emptyPagination = {
+  data: [],
+  current_page: 1,
+  per_page: 10,
+  prev_page_url: null,
+  next_page_url: null,
+  from: null,
+  to: null,
+};
+const extractPagination = (response) => {
+  const payload = response?.data ?? response ?? {};
 
+  if (Array.isArray(payload?.data)) {
+    return { ...emptyPagination, ...payload, data: payload.data };
+  }
+
+  if (Array.isArray(payload)) {
+    return {
+      ...emptyPagination,
+      data: payload,
+      per_page: payload.length,
+      from: payload.length ? 1 : null,
+      to: payload.length || null,
+    };
+  }
+
+  return emptyPagination;
+};
+
+// Categories are small and rarely paginated — keep simple list extraction
 const extractList = (res) => {
   if (Array.isArray(res?.data?.data)) return res.data.data;
   if (Array.isArray(res?.data)) return res.data;
@@ -41,6 +73,9 @@ export default function AdminProductsPage() {
   );
 
   const [products, setProducts] = useState([]);
+  const [pagination, setPagination] = useState(emptyPagination);
+  const [page, setPage] = useState(1);
+
   const [showModal, setShowModal] = useState(false);
   const [categories, setCategories] = useState([]);
   const [form, setForm] = useState(initialForm);
@@ -60,6 +95,7 @@ export default function AdminProductsPage() {
     if (!storeId) {
       setProducts([]);
       setCategories([]);
+      setPagination(emptyPagination);
       setLoading(false);
       return;
     }
@@ -68,43 +104,56 @@ export default function AdminProductsPage() {
     setError('');
 
     try {
+      // Build params — omit search when empty to avoid sending search=
+      const productParams = {
+        page,
+        store_id: storeId,
+        per_page: 10,
+        ...(search.trim() ? { search: search.trim() } : {}),
+      };
+
       const [productsRes, categoriesRes] = await Promise.all([
-        productService.list({ store_id: storeId, search, per_page: 100 }),
+        productService.list(productParams),
         categoryService.list({ store_id: storeId, per_page: 100 }),
       ]);
 
-      setProducts(extractList(productsRes));
+      const parsed = extractPagination(productsRes);
+      setProducts(parsed.data || []);
+      setPagination(parsed);
       setCategories(extractList(categoriesRes));
     } catch (err) {
       setError(formatApiError(err) || 'Unable to load products.');
       setProducts([]);
+      setPagination(emptyPagination);
       setCategories([]);
     } finally {
       setLoading(false);
     }
   };
 
+  // Reset everything when store changes
   useEffect(() => {
     setProducts([]);
+    setPagination(emptyPagination);
     setCategories([]);
     setSearch('');
     setShowModal(false);
     setEditingId(null);
     setForm(initialForm);
     setError('');
+    setPage(1);
 
     if (!storeId) {
       setLoading(false);
-      return;
     }
-
-    load();
   }, [storeId]);
 
+  // Reload when store, search, or page changes
   useEffect(() => {
     load();
-  }, [storeId, search]);
+  }, [storeId, search, page]);
 
+  // Revoke blob URL on unmount / preview change
   useEffect(() => {
     return () => {
       if (form.image_preview?.startsWith('blob:')) {
@@ -199,61 +248,58 @@ export default function AdminProductsPage() {
     }));
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setSubmitting(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
 
-  try {
-    const formData = new FormData();
-    
-    formData.append('store_id', String(Number(storeId)));
-    formData.append('category_id', String(Number(form.category_id)));
-    formData.append('sku', form.sku.trim());
-    formData.append('product_name', form.product_name.trim());
-    formData.append('price', String(Number(form.price)));
-    formData.append('cost_price', String(Number(form.cost_price)));
-    formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
-  
-    formData.append('is_active', form.is_active ? '1' : '0');
-    formData.append('clear_image', form.clear_image ? '1' : '0');
+    try {
+      const formData = new FormData();
 
-    console.log('Mode:', form.image_mode);
-    console.log('Is instance of File?', form.image_file instanceof File);
-    console.log('File Object:', form.image_file);
+      formData.append('store_id', String(Number(storeId)));
+      formData.append('category_id', String(Number(form.category_id)));
+      formData.append('sku', form.sku.trim());
+      formData.append('product_name', form.product_name.trim());
+      formData.append('price', String(Number(form.price)));
+      formData.append('cost_price', String(Number(form.cost_price)));
+      formData.append('vat_rate', String(form.apply_vat ? Number(form.vat_rate || 0) : 0));
+      formData.append('is_active', form.is_active ? '1' : '0');
+      formData.append('clear_image', form.clear_image ? '1' : '0');
 
-    if (form.image_mode === 'upload' && form.image_file && form.image_file instanceof File) {
-      formData.append('image', form.image_file);
-      console.log('File successfully appended to FormData');
-    } else if (form.image_mode === 'upload') {
-      console.error('Upload mode active but no valid file found!');
-    }
-    if (editingId) {
-      formData.append('_method', 'PUT'); 
-    }
-    for (let [key, value] of formData.entries()) {
-      console.log(`FormData Entry: ${key} =`, value);
-    }
-    if (editingId) {
-      
-      await productService.update(editingId, formData);
-    } else {
-      await productService.create(formData);
-    }
+      if (form.image_mode === 'upload' && form.image_file instanceof File) {
+        formData.append('image', form.image_file);
+      } else if (form.image_mode === 'url' && form.image_url_input.trim()) {
+        formData.append('image_url', form.image_url_input.trim());
+      }
 
-    setShowModal(false);
-    resetForm();
-    await load();
-  } catch (err) {
-    console.error('API Error:', err);
-    setError(formatApiError(err));
-  } finally {
-    setSubmitting(false);
-  }
-};
+      if (editingId) {
+        formData.append('_method', 'PUT');
+      }
+
+      if (editingId) {
+        await productService.update(editingId, formData);
+      } else {
+        await productService.create(formData);
+      }
+
+      setShowModal(false);
+      resetForm();
+
+      // If we just created a product go to page 1 so it appears at top
+      if (!editingId) {
+        setPage(1);
+      } else {
+        await load();
+      }
+    } catch (err) {
+      setError(formatApiError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleEdit = (product) => {
-    setEditingId(product.product_id);
+    setEditingId(product.product_uuid);
     setForm({
       category_id: product.category_id || '',
       sku: product.sku || '',
@@ -278,10 +324,26 @@ const handleSubmit = async (e) => {
 
     try {
       await productService.remove(productId);
-      await load();
+
+      if (products.length === 1 && page > 1) {
+        setPage((prev) => prev - 1);
+      } else {
+        await load();
+      }
     } catch (err) {
       setError(formatApiError(err) || 'Unable to delete product.');
     }
+  };
+
+  // ─── Helper: resolve image src from product ──────────────────────────────────
+  const resolveImageSrc = (product) => {
+    if (product.image_url) return product.image_url;
+    if (product.image) {
+      return product.image.startsWith('http')
+        ? product.image
+        : `${IMAGE_BASE_URL}${product.image}`;
+    }
+    return null;
   };
 
   return (
@@ -293,10 +355,19 @@ const handleSubmit = async (e) => {
         >
           <div className="catalog-hero-copy" style={{ display: 'flex', flexDirection: 'column' }}>
             <h2 className="catalog-title">Products</h2>
-            <p className="catalog-subtitle">{products.length} products in catalog</p>
+            <p className="catalog-subtitle">
+              {pagination.from && pagination.to
+                ? `Showing ${pagination.from}–${pagination.to}`
+                : `${products.length} products in catalog`}
+            </p>
           </div>
 
-          <button type="button" className="ghost-button" onClick={openCreateModal} disabled={!storeId}>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={openCreateModal}
+            disabled={!storeId}
+          >
             <Plus size={18} />
             New product
           </button>
@@ -309,7 +380,10 @@ const handleSubmit = async (e) => {
               type="text"
               placeholder="Search product"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1); // reset to page 1 on new search
+              }}
               disabled={!storeId}
             />
           </label>
@@ -342,85 +416,86 @@ const handleSubmit = async (e) => {
                     <td colSpan="6">Loading...</td>
                   </tr>
                 ) : products.length ? (
-products.map((product) => {
-  // Determine the correct image source fallback chain
-  let imageSource = null;
-  
-  if (product.image_url) {
-    imageSource = product.image_url;
-  } else if (product.image) {
-    // If it's a relative path from the DB (e.g. "products/xyz.jpg"), prepend the storage URL
-    imageSource = product.image.startsWith('http') 
-      ? product.image 
-      : `${IMAGE_BASE_URL}${product.image}`;
-  }
+                  products.map((product) => {
+                    // ─── Fix #2: safe key — uuid first, product_id as fallback ───
+                    const rowKey = product.product_uuid ?? product.product_id;
+                    const imageSrc = resolveImageSrc(product);
 
-  return (
-    <tr key={product.product_id}>
-      <td>
-        {imageSource ? (
-          <img
-            src={imageSource}
-            alt={product.product_name}
-            style={{
-              width: 56,
-              height: 56,
-              objectFit: 'cover',
-              borderRadius: 12,
-              border: '1px solid var(--line)',
-              background: 'var(--panel-2)',
-            }}
-            onError={(e) => {
-              // Instead of hiding it completely, you can log it or substitute a clean fallback icon
-              console.warn(`Failed to load image: ${imageSource}`);
-              e.currentTarget.style.display = 'none';
-            }}
-          />
-        ) : (
-          <div className="muted" style={{ fontSize: '12px', textAlign: 'center', width: 56 }}>
-            No image
-          </div>
-        )}
-      </td>
+                    return (
+                      <tr key={rowKey}>
+                        <td>
+                          {imageSrc ? (
+                            <img
+                              src={imageSrc}
+                              alt={product.product_name}
+                              style={{
+                                width: 56,
+                                height: 56,
+                                objectFit: 'cover',
+                                borderRadius: 12,
+                                border: '1px solid var(--line)',
+                                background: 'var(--panel-2)',
+                              }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div
+                              className="muted"
+                              style={{ fontSize: '12px', textAlign: 'center', width: 56 }}
+                            >
+                              No image
+                            </div>
+                          )}
+                        </td>
 
-      <td>
-        <strong>{product.product_name}</strong>
-        <div className="muted">{product.sku}</div>
-      </td>
+                        <td>
+                          <strong>{product.product_name}</strong>
+                          <div className="muted">{product.sku}</div>
+                        </td>
 
-      <td>{product.category?.category_name || '-'}</td>
+                        <td>{product.category?.category_name || '-'}</td>
 
-      <td>
-        <div>{currency(product.price, currentStore?.currency)}</div>
-        <div className="muted">Cost {currency(product.cost_price, currentStore?.currency)}</div>
-        <div className="muted">
-          {Number(product.vat_rate || 0) > 0 ? `VAT ${Number(product.vat_rate || 0)}%` : 'No VAT'}
-        </div>
-      </td>
+                        <td>
+                          <div>{currency(product.price, currentStore?.currency)}</div>
+                          <div className="muted">
+                            Cost {currency(product.cost_price, currentStore?.currency)}
+                          </div>
+                          <div className="muted">
+                            {Number(product.vat_rate || 0) > 0
+                              ? `VAT ${Number(product.vat_rate)}%`
+                              : 'No VAT'}
+                          </div>
+                        </td>
 
-      <td>
-        <span className={`status-badge ${product.is_active ? 'paid' : 'draft'}`}>
-          {product.is_active ? 'Active' : 'Inactive'}
-        </span>
-      </td>
+                        <td>
+                          <span className={`status-badge ${product.is_active ? 'paid' : 'draft'}`}>
+                            {product.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
 
-      <td>
-        <div className="row-actions compact">
-          <button type="button" className="ghost-button" onClick={() => handleEdit(product)}>
-            Edit
-          </button>
-          <button
-            type="button"
-            className="ghost-button danger"
-            onClick={() => handleDelete(product.product_id)}
-          >
-            Delete
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-})
+                        <td>
+                          <div className="row-actions compact">
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => handleEdit(product)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost-button danger"
+                              onClick={() => handleDelete(product.product_uuid)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan="6">No products found.</td>
@@ -429,19 +504,59 @@ products.map((product) => {
               </tbody>
             </table>
           </div>
+
+          {/* ─── Pagination controls ─────────────────────────────────────────── */}
+          {storeId ? (
+            <div
+              className="row-actions"
+              style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
+            >
+              <span className="muted">Page {pagination.current_page || page}</span>
+
+              <div className="row-actions compact">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={!pagination.prev_page_url || loading}
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setPage((prev) => prev + 1)}
+                  disabled={!pagination.next_page_url || loading}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </article>
       </section>
 
       {showModal ? (
         <div className="modal-backdrop" onClick={closeModal}>
-          <div className="modal-card form-modal-card form-modal-card-wide" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-card form-modal-card form-modal-card-wide"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <div>
                 <h3>{editingId ? 'Edit product' : 'New product'}</h3>
-                <p className="muted">Add product details, upload an image file, or save a direct image URL.</p>
+                <p className="muted">
+                  Add product details, upload an image file, or save a direct image URL.
+                </p>
               </div>
 
-              <button type="button" className="icon-button" onClick={closeModal} disabled={submitting}>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={closeModal}
+                disabled={submitting}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -469,7 +584,7 @@ products.map((product) => {
                   SKU
                   <input
                     className="text-input"
-                    placeholder="Please enter product code, e.g., PROD-01"
+                    placeholder="e.g. PROD-01"
                     value={form.sku}
                     onChange={(e) => setForm({ ...form, sku: e.target.value })}
                     required
@@ -480,7 +595,7 @@ products.map((product) => {
                   Product name
                   <input
                     className="text-input"
-                    placeholder="Please enter product name"
+                    placeholder="Enter product name"
                     value={form.product_name}
                     onChange={(e) => setForm({ ...form, product_name: e.target.value })}
                     required
@@ -494,7 +609,7 @@ products.map((product) => {
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="Please enter selling price"
+                    placeholder="Enter selling price"
                     value={form.price}
                     onChange={(e) => setForm({ ...form, price: e.target.value })}
                     required
@@ -508,7 +623,7 @@ products.map((product) => {
                     type="number"
                     min="0"
                     step="0.01"
-                    placeholder="Please enter cost price (buying price)"
+                    placeholder="Enter cost / buying price"
                     value={form.cost_price}
                     onChange={(e) => setForm({ ...form, cost_price: e.target.value })}
                     required
@@ -525,7 +640,7 @@ products.map((product) => {
                     value={form.vat_rate}
                     disabled={!form.apply_vat}
                     onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}
-                    placeholder={form.apply_vat ? 'Please enter VAT rate' : 'Enable VAT first'}
+                    placeholder={form.apply_vat ? 'Enter VAT rate' : 'Enable VAT first'}
                   />
                 </label>
 
@@ -547,7 +662,11 @@ products.map((product) => {
                   </button>
 
                   {previewSrc ? (
-                    <button type="button" className="ghost-button danger" onClick={clearCurrentImage}>
+                    <button
+                      type="button"
+                      className="ghost-button danger"
+                      onClick={clearCurrentImage}
+                    >
                       Remove image
                     </button>
                   ) : null}
@@ -628,10 +747,19 @@ products.map((product) => {
                 {error ? <p className="form-error span-2">{error}</p> : null}
 
                 <div className="catalog-modal-actions span-2">
-                  <button type="button" className="ghost-button" onClick={closeModal} disabled={submitting}>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={closeModal}
+                    disabled={submitting}
+                  >
                     Cancel
                   </button>
-                  <button className="catalog-primary-btn" type="submit" disabled={submitting}>
+                  <button
+                    className="catalog-primary-btn"
+                    type="submit"
+                    disabled={submitting}
+                  >
                     {editingId ? 'Update product' : 'Create product'}
                   </button>
                 </div>

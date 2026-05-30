@@ -15,11 +15,34 @@ const initialForm = {
   is_active: true,
 };
 
-const extractList = (response) => {
-  if (Array.isArray(response?.data?.data)) return response.data.data;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response)) return response;
-  return [];
+const emptyPagination = {
+  data: [],
+  current_page: 1,
+  per_page: 10,
+  prev_page_url: null,
+  next_page_url: null,
+  from: null,
+  to: null,
+};
+
+const extractPagination = (response) => {
+  const payload = response?.data ?? response ?? {};
+
+  if (Array.isArray(payload?.data)) {
+    return { ...emptyPagination, ...payload, data: payload.data };
+  }
+
+  if (Array.isArray(payload)) {
+    return {
+      ...emptyPagination,
+      data: payload,
+      per_page: payload.length,
+      from: payload.length ? 1 : null,
+      to: payload.length || null,
+    };
+  }
+
+  return emptyPagination;
 };
 
 function SummaryCard({ icon: Icon, label, value, caption }) {
@@ -40,6 +63,8 @@ function SummaryCard({ icon: Icon, label, value, caption }) {
 export default function AdminStoresPage() {
   const { user } = useAuth();
   const [stores, setStores] = useState([]);
+  const [pagination, setPagination] = useState(emptyPagination);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -51,12 +76,17 @@ export default function AdminStoresPage() {
   const load = async () => {
     setLoading(true);
     setError('');
+
     try {
-      const response = await storeService.list({ per_page: 200 });
-      setStores(extractList(response));
+      const response = await storeService.list({ page, per_page: 10 });
+      const parsed = extractPagination(response);
+
+      setStores(parsed.data || []);
+      setPagination(parsed);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load stores.');
       setStores([]);
+      setPagination(emptyPagination);
     } finally {
       setLoading(false);
     }
@@ -64,7 +94,7 @@ export default function AdminStoresPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [page]);
 
   const summary = useMemo(() => {
     const active = stores.filter((store) => store.is_active).length;
@@ -77,7 +107,6 @@ export default function AdminStoresPage() {
   const resetForm = () => {
     setForm(initialForm);
     setEditingId(null);
-    setMessage('');
     setError('');
   };
 
@@ -87,12 +116,17 @@ export default function AdminStoresPage() {
     setMessage('');
 
     try {
-      if (editingId) await storeService.update(editingId, form);
-      else await storeService.create(form);
+      if (editingId) {
+        await storeService.update(editingId, form);
+        setMessage('Store updated successfully.');
+      } else {
+        await storeService.create(form);
+        setMessage('Store created successfully.');
+      }
 
-      setMessage(editingId ? 'Store updated successfully.' : 'Store created successfully.');
-      resetForm();
-      load();
+      setForm(initialForm);
+      setEditingId(null);
+      await load();
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to save store.');
     }
@@ -121,7 +155,12 @@ export default function AdminStoresPage() {
     try {
       await storeService.remove(targetStoreId);
       setMessage('Store deactivated successfully.');
-      load();
+
+      if (stores.length === 1 && page > 1) {
+        setPage((prev) => prev - 1);
+      } else {
+        await load();
+      }
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to remove store.');
     }
@@ -130,28 +169,32 @@ export default function AdminStoresPage() {
   if (!canManageStores) {
     return (
       <section className="stack-lg">
-<div className="section-header">
-  <div>
-    <h2>Manager store access</h2>
-    <p>Store management is restricted to system administrators. Please contact your administrator for assistance.</p>
-  </div>
-</div>
+        <div className="section-header">
+          <div>
+            <h2>Manager store access</h2>
+            <p>
+              Store management is restricted to system administrators. Please contact your
+              administrator for assistance.
+            </p>
+          </div>
+        </div>
       </section>
     );
   }
 
   return (
     <section className="stack-lg">
-<div className="section-header">
-  <div>
-    <h2>Stores</h2>
-  </div>
-</div>
+      <div className="section-header">
+        <div>
+          <h2>Stores</h2>
+        </div>
+      </div>
+
       <div className="metrics-grid">
-        <SummaryCard icon={StoreIcon} label="Stores" value={stores.length}  />
-        <SummaryCard icon={Building2} label="Active" value={summary.active}  />
-        <SummaryCard icon={MapPin} label="Inactive" value={summary.inactive}  />
-        <SummaryCard icon={Phone} label="Currencies" value={summary.currencies} />
+        <SummaryCard icon={StoreIcon} label="Stores" value={stores.length} caption="This page" />
+        <SummaryCard icon={Building2} label="Active" value={summary.active} caption="This page" />
+        <SummaryCard icon={MapPin} label="Inactive" value={summary.inactive} caption="This page" />
+        <SummaryCard icon={Phone} label="Currencies" value={summary.currencies} caption="This page" />
       </div>
 
       <div className="dashboard-grid two-wide">
@@ -269,7 +312,11 @@ export default function AdminStoresPage() {
           <div className="card-header">
             <div>
               <h3>All stores</h3>
-              <p>{stores.length} locations</p>
+              <p>
+                {pagination.from && pagination.to
+                  ? `Showing ${pagination.from}-${pagination.to}`
+                  : `${stores.length} locations`}
+              </p>
             </div>
           </div>
 
@@ -287,7 +334,9 @@ export default function AdminStoresPage() {
 
               <tbody>
                 {loading ? (
-                  <tr><td colSpan="5">Loading...</td></tr>
+                  <tr>
+                    <td colSpan="5">Loading...</td>
+                  </tr>
                 ) : stores.length ? (
                   stores.map((store) => (
                     <tr key={store.store_id}>
@@ -307,8 +356,13 @@ export default function AdminStoresPage() {
                       </td>
                       <td>
                         <div className="row-actions compact">
-                          <button className="ghost-button" onClick={() => handleEdit(store)}>Edit</button>
-                          <button className="ghost-button danger" onClick={() => handleDelete(store.store_id)}>
+                          <button className="ghost-button" onClick={() => handleEdit(store)}>
+                            Edit
+                          </button>
+                          <button
+                            className="ghost-button danger"
+                            onClick={() => handleDelete(store.store_id)}
+                          >
                             Deactivate
                           </button>
                         </div>
@@ -316,10 +370,39 @@ export default function AdminStoresPage() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan="5">No stores found.</td></tr>
+                  <tr>
+                    <td colSpan="5">No stores found.</td>
+                  </tr>
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div
+            className="row-actions"
+            style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
+          >
+            <span className="muted">Page {pagination.current_page || page}</span>
+
+            <div className="row-actions compact">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                disabled={!pagination.prev_page_url || loading}
+              >
+                Previous
+              </button>
+
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!pagination.next_page_url || loading}
+              >
+                Next
+              </button>
+            </div>
           </div>
         </article>
       </div>

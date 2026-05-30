@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\DocumentSequence;
+use Illuminate\Support\Facades\DB;
 
 class Billing extends Model
 {
@@ -32,7 +34,7 @@ class Billing extends Model
         'billing_date',
         'notes',
     ];
-
+    
     protected $casts = [
         'subtotal' => 'decimal:2',
         'vat_amount' => 'decimal:2',
@@ -51,8 +53,23 @@ class Billing extends Model
 
         static::creating(function ($model) {
             if (empty($model->invnumber)) {
-                $lastId = Billing::withTrashed()->max('billing_id') ?? 0;
-                $model->invnumber = 'INV-' . str_pad($lastId + 1, 4, '0', STR_PAD_LEFT);
+                // 1. Convert attributes to floats safely to prevent null matching 0
+                $total = (float) $model->total;
+                $paid = (float) $model->paid_amount;
+                
+                // 2. Strict calculation: Is it fully paid upfront?
+                $isFullyPaid = ($total > 0 && $paid >= $total);
+
+                // 3. Absolute Safeguard: If it is explicitly marked as a draft, or nothing has been paid, it is ALWAYS an invoice
+                if ($model->is_draft || $model->status === 'draft' || $paid === 0.00) {
+                    $isFullyPaid = false;
+                }
+
+                // 4. Assign the correct sequence path
+                $documentType = $isFullyPaid ? 'receipt' : 'invoice';
+                
+                $documentService = app(\App\Services\DocumentNumberService::class);
+                $model->invnumber = $documentService->nextNumber($model->store_id, $documentType);
             }
         });
     }

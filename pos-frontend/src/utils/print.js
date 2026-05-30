@@ -141,7 +141,7 @@ export function openBillingPrint(
             <div class="item-meta">${qty} x ${currency(
               unitPrice,
               currentStore?.currency || 'KES'
-            )} &nbsp; ${escapeHtml(vatAmountText)}</div>
+            )} &nbsp; ${escapeHtml(vatAmountText)}(VAT)</div>
           </td>
           <td class="amount-cell">${currency(total, currentStore?.currency || 'KES')}</td>
         </tr>

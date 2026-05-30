@@ -6,16 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Store\StoreRequest;
 use App\Http\Requests\Store\UpdateStoreRequest;
 use App\Http\Requests\Store\UpdateStoreSettingsRequest;
+use App\Models\DocumentSequence;
 use App\Models\Store;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class StoreController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $query = Store::query()->withCount('assignedUsers')->orderBy('store_name');
+        $perPage = max(1, min((int) $request->get('per_page', 10), 100));
+
+        $query = Store::query()
+            ->withCount('assignedUsers')
+            ->orderBy('store_name');
 
         if (! $user->isAdmin()) {
             $allowedStoreIds = $user->stores()->pluck('stores.store_id')
@@ -32,7 +38,8 @@ class StoreController extends Controller
         }
 
         return response()->json([
-            'data' => $query->get(),
+            'message' => 'Stores retrieved successfully.',
+            'data' => $query->simplePaginate($perPage)->withQueryString(),
         ]);
     }
 
@@ -99,9 +106,14 @@ class StoreController extends Controller
             return response()->json(['message' => 'You do not have access to this store.'], 403);
         }
 
+        $store->loadMissing('documentSequences');
+
         return response()->json([
             'message' => 'Store settings retrieved successfully.',
-            'data' => array_replace($this->defaultSettings(), $store->settings ?? []),
+            'data' => [
+                'settings' => array_replace($this->defaultSettings(), $store->settings ?? []),
+                'document_sequences' => $this->mapDocumentSequences($store),
+            ],
         ]);
     }
 
@@ -111,19 +123,50 @@ class StoreController extends Controller
             return response()->json(['message' => 'Only the system admin can update store settings.'], 403);
         }
 
-        $incoming = $request->validated()['settings'] ?? [];
+        $validated = $request->validated();
+        $incomingSettings = $validated['settings'] ?? [];
+        $incomingSequences = $validated['document_sequences'] ?? [];
 
-        $store->update([
-            'settings' => array_replace(
-                $this->defaultSettings(),
-                $store->settings ?? [],
-                $incoming
-            ),
-        ]);
+        DB::transaction(function () use ($store, $incomingSettings, $incomingSequences) {
+            $store->update([
+                'settings' => array_replace(
+                    $this->defaultSettings(),
+                    $store->settings ?? [],
+                    $incomingSettings
+                ),
+            ]);
+
+            foreach (['invoice', 'receipt'] as $documentType) {
+                if (! array_key_exists($documentType, $incomingSequences)) {
+                    continue;
+                }
+
+                $sequenceData = $incomingSequences[$documentType] ?? [];
+                $defaultPrefix = $documentType === 'receipt' ? 'REC-' : 'INV-';
+
+                DocumentSequence::updateOrCreate(
+                    [
+                        'store_id' => $store->store_id,
+                        'document_type' => $documentType,
+                    ],
+                    [
+                        'prefix' => $sequenceData['prefix'] ?? $defaultPrefix,
+                        'suffix' => $sequenceData['suffix'] ?? '',
+                        'last_number' => $sequenceData['last_number'] ?? 0,
+                    ]
+                );
+            }
+        });
+
+        $store->refresh()->load('documentSequences');
 
         return response()->json([
             'message' => 'Store settings updated successfully.',
-            'data' => $store->fresh(),
+            'data' => [
+                'settings' => array_replace($this->defaultSettings(), $store->settings ?? []),
+                'document_sequences' => $this->mapDocumentSequences($store),
+                'store' => $store,
+            ],
         ]);
     }
 
@@ -153,6 +196,26 @@ class StoreController extends Controller
 
             'paper_width' => 80,
             'print_delay_ms' => 300,
+        ];
+    }
+
+    private function mapDocumentSequences(Store $store): array
+    {
+        $store->loadMissing('documentSequences');
+
+        $indexed = $store->documentSequences->keyBy('document_type');
+
+        return [
+            'invoice' => [
+                'prefix' => $indexed->get('invoice')?->prefix ?? 'INV-',
+                'suffix' => $indexed->get('invoice')?->suffix ?? '',
+                'last_number' => (int) ($indexed->get('invoice')?->last_number ?? 0),
+            ],
+            'receipt' => [
+                'prefix' => $indexed->get('receipt')?->prefix ?? 'REC-',
+                'suffix' => $indexed->get('receipt')?->suffix ?? '',
+                'last_number' => (int) ($indexed->get('receipt')?->last_number ?? 0),
+            ],
         ];
     }
 

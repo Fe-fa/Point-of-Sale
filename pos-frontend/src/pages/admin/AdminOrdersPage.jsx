@@ -25,7 +25,7 @@ export default function AdminOrdersPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await billingService.list({ per_page: 100, status, store_id: storeId });
+      const response = await billingService.list({ per_page: 10, status, store_id: storeId });
       setOrders(response.data?.data || []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load orders.');

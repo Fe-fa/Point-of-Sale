@@ -3,19 +3,37 @@ import Modal from '../../components/common/Modal';
 import { useStore } from '../../contexts/StoreContext';
 import { billingService } from '../../services/billingService';
 import { currency, formatDateTime } from '../../utils/helpers';
-// import { openBillingPrint } from '../../utils/print';
 import { mergeStoreSettings } from '../../utils/storeSettings';
 import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
 
+const emptyPagination = {
+  data: [],
+  current_page: 1,
+  per_page: 10,
+  prev_page_url: null,
+  next_page_url: null,
+  from: null,
+  to: null,
+};
 
+const extractPagination = (response) => {
+  const payload = response?.data ?? response ?? {};
 
+  if (Array.isArray(payload?.data)) {
+    return { ...emptyPagination, ...payload, data: payload.data };
+  }
 
-const extractList = (response) => {
-  if (Array.isArray(response?.data?.data?.data)) return response.data.data.data;
-  if (Array.isArray(response?.data?.data)) return response.data.data;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response)) return response;
-  return [];
+  if (Array.isArray(payload)) {
+    return {
+      ...emptyPagination,
+      data: payload,
+      per_page: payload.length,
+      from: payload.length ? 1 : null,
+      to: payload.length || null,
+    };
+  }
+
+  return emptyPagination;
 };
 
 const extractRecord = (response) => {
@@ -39,12 +57,12 @@ export default function AdminBillingsPage() {
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
   const printSettings = mergeStoreSettings(currentStore);
 
-
-
   const [billings, setBillings] = useState([]);
+  const [pagination, setPagination] = useState(emptyPagination);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
-  const [scope, setScope] = useState('active'); // active | trashed | all
+  const [scope, setScope] = useState('active');
   const [selectedBilling, setSelectedBilling] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -53,6 +71,7 @@ export default function AdminBillingsPage() {
   const loadBillings = async () => {
     if (!storeId) {
       setBillings([]);
+      setPagination(emptyPagination);
       setLoading(false);
       return;
     }
@@ -62,7 +81,8 @@ export default function AdminBillingsPage() {
 
     try {
       const params = {
-        per_page: 100,
+        page,
+        per_page: 10,
         store_id: storeId,
       };
 
@@ -81,10 +101,14 @@ export default function AdminBillingsPage() {
       }
 
       const response = await billingService.list(params);
-      setBillings(extractList(response));
+      const parsed = extractPagination(response);
+
+      setPagination(parsed);
+      setBillings(parsed.data || []);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load billing records.');
       setBillings([]);
+      setPagination(emptyPagination);
     } finally {
       setLoading(false);
     }
@@ -102,7 +126,7 @@ export default function AdminBillingsPage() {
     }
 
     loadBillings();
-  }, [storeId, status, scope]);
+  }, [storeId, status, scope, page]);
 
   useEffect(() => {
     if (!success) return;
@@ -123,7 +147,7 @@ export default function AdminBillingsPage() {
     } catch (err) {
       setError(
         err?.response?.data?.message ||
-        'Unable to load billing detail. If this billing is trashed, ensure the backend show endpoint supports soft-deleted records.'
+          'Unable to load billing detail. If this billing is trashed, ensure the backend show endpoint supports soft-deleted records.'
       );
     }
   };
@@ -152,7 +176,12 @@ export default function AdminBillingsPage() {
       }
 
       setSuccess('Billing moved to trash successfully.');
-      await loadBillings();
+
+      if (billings.length === 1 && page > 1) {
+        setPage((prev) => prev - 1);
+      } else {
+        await loadBillings();
+      }
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to delete billing.');
     } finally {
@@ -180,7 +209,12 @@ export default function AdminBillingsPage() {
       }
 
       setSuccess('Billing restored successfully.');
-      await loadBillings();
+
+      if (billings.length === 1 && page > 1) {
+        setPage((prev) => prev - 1);
+      } else {
+        await loadBillings();
+      }
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to restore billing.');
     } finally {
@@ -209,7 +243,10 @@ export default function AdminBillingsPage() {
           <select
             className="select-input slim"
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
             disabled={!storeId}
           >
             <option value="">All statuses</option>
@@ -222,7 +259,10 @@ export default function AdminBillingsPage() {
           <select
             className="select-input slim"
             value={scope}
-            onChange={(e) => setScope(e.target.value)}
+            onChange={(e) => {
+              setScope(e.target.value);
+              setPage(1);
+            }}
             disabled={!storeId}
           >
             <option value="active">Active only</option>
@@ -238,7 +278,11 @@ export default function AdminBillingsPage() {
         <div className="card-header">
           <div>
             <h3>Billing records</h3>
-            <p>{billings.length} items</p>
+            <p>
+              {pagination.from && pagination.to
+                ? `Showing ${pagination.from}-${pagination.to}`
+                : `${billings.length} items`}
+            </p>
           </div>
         </div>
 
@@ -330,6 +374,35 @@ export default function AdminBillingsPage() {
             </tbody>
           </table>
         </div>
+
+        {storeId ? (
+          <div
+            className="row-actions"
+            style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
+          >
+            <span className="muted">Page {pagination.current_page || page}</span>
+
+            <div className="row-actions compact">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                disabled={!pagination.prev_page_url || loading}
+              >
+                Previous
+              </button>
+
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setPage((prev) => prev + 1)}
+                disabled={!pagination.next_page_url || loading}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
       </article>
 
       <Modal
@@ -343,9 +416,7 @@ export default function AdminBillingsPage() {
             <div className="detail-grid">
               <div>
                 <p className="muted">Invoice</p>
-                <strong>
-                  {selectedBilling.invnumber || `Draft #${selectedBilling.billing_id}`}
-                </strong>
+                <strong>{selectedBilling.invnumber || `Draft #${selectedBilling.billing_id}`}</strong>
               </div>
 
               <div>
@@ -366,17 +437,25 @@ export default function AdminBillingsPage() {
 
               <div>
                 <p className="muted">Billing date</p>
-                <strong>{selectedBilling.billing_date ? formatDateTime(selectedBilling.billing_date) : '-'}</strong>
+                <strong>
+                  {selectedBilling.billing_date
+                    ? formatDateTime(selectedBilling.billing_date)
+                    : '-'}
+                </strong>
               </div>
 
               <div>
                 <p className="muted">Paid amount</p>
-                <strong>{currency(Number(selectedBilling.paid_amount || 0), currentStore?.currency)}</strong>
+                <strong>
+                  {currency(Number(selectedBilling.paid_amount || 0), currentStore?.currency)}
+                </strong>
               </div>
 
               <div>
                 <p className="muted">Balance due</p>
-                <strong>{currency(Number(selectedBilling.balance_due || 0), currentStore?.currency)}</strong>
+                <strong>
+                  {currency(Number(selectedBilling.balance_due || 0), currentStore?.currency)}
+                </strong>
               </div>
 
               <div>
@@ -386,7 +465,11 @@ export default function AdminBillingsPage() {
 
               <div>
                 <p className="muted">Stock applied</p>
-                <strong>{selectedBilling.stock_applied_at ? formatDateTime(selectedBilling.stock_applied_at) : '-'}</strong>
+                <strong>
+                  {selectedBilling.stock_applied_at
+                    ? formatDateTime(selectedBilling.stock_applied_at)
+                    : '-'}
+                </strong>
               </div>
             </div>
 
@@ -418,9 +501,9 @@ export default function AdminBillingsPage() {
                           {currency(
                             Number(
                               item.total_amount ??
-                              item.line_total ??
-                              item.line_subtotal ??
-                              Number(item.quantity || 0) * Number(item.unit_price || 0)
+                                item.line_total ??
+                                item.line_subtotal ??
+                                Number(item.quantity || 0) * Number(item.unit_price || 0)
                             ),
                             currentStore?.currency
                           )}
@@ -547,7 +630,6 @@ export default function AdminBillingsPage() {
                 </button>
               )}
             </div>
-
           </div>
         ) : null}
       </Modal>

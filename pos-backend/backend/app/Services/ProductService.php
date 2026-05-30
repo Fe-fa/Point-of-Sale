@@ -5,7 +5,7 @@ namespace App\Services;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -27,7 +27,9 @@ class ProductService
             return;
         }
 
-        $allowed = $this->allowedStoreIds($user)->map(fn ($id) => (string) $id)->all();
+        $allowed = $this->allowedStoreIds($user)
+            ->map(fn ($id) => (string) $id)
+            ->all();
 
         if (!in_array((string) $storeId, $allowed, true)) {
             abort(response()->json([
@@ -36,9 +38,9 @@ class ProductService
         }
     }
 
-    public function paginate(User $user, array $filters = []): LengthAwarePaginator
+    public function paginate(User $user, array $filters = []): Paginator
     {
-        $perPage = (int) ($filters['per_page'] ?? 15);
+        $perPage = (int) ($filters['per_page'] ?? 24);
 
         $query = Product::query()
             ->with(['category'])
@@ -60,7 +62,7 @@ class ProductService
 
             $query->where(function ($q) use ($search) {
                 $q->where('product_name', 'like', "%{$search}%")
-                    ->orWhere('sku', 'like', "%{$search}%");
+                  ->orWhere('sku', 'like', "%{$search}%");
             });
         }
 
@@ -69,10 +71,13 @@ class ProductService
         }
 
         if (array_key_exists('is_active', $filters) && $filters['is_active'] !== '') {
-            $query->where('is_active', filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN));
+            $query->where(
+                'is_active',
+                filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)
+            );
         }
 
-        return $query->paginate($perPage);
+        return $query->simplePaginate($perPage);
     }
 
     public function create(User $user, array $data): Product
@@ -90,15 +95,15 @@ class ProductService
         $imageValue = $this->resolveImageValue($data, null);
 
         $productData = [
-            'store_id'      => $data['store_id'],
-            'category_id'   => $data['category_id'],
-            'sku'           => $data['sku'],
-            'product_name'  => $data['product_name'],
-            'price'         => $data['price'],
-            'cost_price'    => $data['cost_price'],
-            'vat_rate'      => $data['vat_rate'] ?? 0,
-            'image_url'     => $imageValue,
-            'is_active'     => isset($data['is_active'])
+            'store_id'     => $data['store_id'],
+            'category_id'  => $data['category_id'],
+            'sku'          => $data['sku'],
+            'product_name' => $data['product_name'],
+            'price'        => $data['price'],
+            'cost_price'   => $data['cost_price'],
+            'vat_rate'     => $data['vat_rate'] ?? 0,
+            'image_url'    => $imageValue,
+            'is_active'    => isset($data['is_active'])
                 ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
                 : true,
         ];
@@ -139,14 +144,14 @@ class ProductService
         }
 
         $updateData = [
-            'store_id'      => $storeId,
-            'category_id'   => $data['category_id'] ?? $product->category_id,
-            'sku'           => $data['sku'] ?? $product->sku,
-            'product_name'  => $data['product_name'] ?? $product->product_name,
-            'price'         => $data['price'] ?? $product->price,
-            'cost_price'    => $data['cost_price'] ?? $product->cost_price,
-            'vat_rate'      => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
-            'is_active'     => array_key_exists('is_active', $data)
+            'store_id'     => $storeId,
+            'category_id'  => $data['category_id'] ?? $product->category_id,
+            'sku'          => $data['sku'] ?? $product->sku,
+            'product_name' => $data['product_name'] ?? $product->product_name,
+            'price'        => $data['price'] ?? $product->price,
+            'cost_price'   => $data['cost_price'] ?? $product->cost_price,
+            'vat_rate'     => array_key_exists('vat_rate', $data) ? $data['vat_rate'] : $product->vat_rate,
+            'is_active'    => array_key_exists('is_active', $data)
                 ? filter_var($data['is_active'], FILTER_VALIDATE_BOOLEAN)
                 : $product->is_active,
         ];

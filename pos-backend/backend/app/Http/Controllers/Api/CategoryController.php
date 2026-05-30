@@ -12,7 +12,9 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    public function __construct(private readonly CategoryService $service) {}
+    public function __construct(
+        private readonly CategoryService $service
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -33,11 +35,11 @@ class CategoryController extends Controller
         ], 201);
     }
 
-    public function show(Category $category): JsonResponse
+    public function show(Request $request, Category $category): JsonResponse
     {
         return response()->json([
             'message' => 'Category retrieved successfully.',
-            'data' => $this->service->show($category, $this->requestUser()),
+            'data' => $this->service->show($category, $request->user()),
         ]);
     }
 
@@ -49,17 +51,12 @@ class CategoryController extends Controller
         ]);
     }
 
-    public function destroy(Category $category): JsonResponse
+    public function destroy(Request $request, Category $category): JsonResponse
     {
-        $this->service->delete($this->requestUser(), $category);
+        $this->service->delete($request->user(), $category);
 
         return response()->json([
             'message' => 'Category deleted successfully.',
         ]);
-    }
-
-    private function requestUser()
-    {
-        return request()->user();
     }
 }

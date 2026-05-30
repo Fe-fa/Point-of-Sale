@@ -4,7 +4,8 @@ namespace App\Services;
 
 use App\Models\Category;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator;
+
 
 class CategoryService
 {
@@ -24,7 +25,9 @@ class CategoryService
             return;
         }
 
-        $allowed = $this->allowedStoreIds($user)->map(fn ($id) => (string) $id)->all();
+        $allowed = $this->allowedStoreIds($user)
+            ->map(fn ($id) => (string) $id)
+            ->all();
 
         if (!in_array((string) $storeId, $allowed, true)) {
             abort(response()->json([
@@ -33,9 +36,9 @@ class CategoryService
         }
     }
 
-    public function paginate(User $user, array $filters = []): LengthAwarePaginator
+    public function paginate(User $user, array $filters = []): Paginator
     {
-        $perPage = (int)($filters['per_page'] ?? 15);
+        $perPage = (int) ($filters['per_page'] ?? 12);
 
         $query = Category::query()
             ->withCount('products')
@@ -49,13 +52,14 @@ class CategoryService
             $this->authorizeStoreAccess($user, $filters['store_id']);
             $query->where('store_id', $filters['store_id']);
         }
-
+        
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
             $query->where('category_name', 'like', "%{$search}%");
         }
 
-        return $query->paginate($perPage);
+        return $query->simplePaginate($perPage);
+        
     }
 
     public function create(User $user, array $data): Category
@@ -71,6 +75,7 @@ class CategoryService
     public function show(Category $category, User $user): Category
     {
         $this->authorizeStoreAccess($user, $category->store_id);
+
         return $category->loadCount('products');
     }
 

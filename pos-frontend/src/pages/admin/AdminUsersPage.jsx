@@ -70,7 +70,7 @@ export default function AdminUsersPage() {
     setLoading(true);
     setError('');
     try {
-      const params = { per_page: 200 };
+      const params = { per_page: 10 };
       if (roleFilter !== 'all') params.role = roleFilter;
       if (assignmentFilter !== 'all') params.assigned = assignmentFilter;
       if (!isAdmin && activeStore?.store_id) params.store_id = activeStore.store_id;

@@ -6,11 +6,34 @@ import { useStore } from '../../contexts/StoreContext';
 
 const initialForm = { full_name: '', email: '', phone: '', current_balance: 0 };
 
-const extractList = (res) => {
-  if (Array.isArray(res?.data?.data)) return res.data.data;
-  if (Array.isArray(res?.data)) return res.data;
-  if (Array.isArray(res)) return res;
-  return [];
+const emptyPagination = {
+  data: [],
+  current_page: 1,
+  per_page: 10,
+  prev_page_url: null,
+  next_page_url: null,
+  from: null,
+  to: null,
+};
+
+const extractPagination = (response) => {
+  const payload = response?.data ?? response ?? {};
+
+  if (Array.isArray(payload?.data)) {
+    return { ...emptyPagination, ...payload, data: payload.data };
+  }
+
+  if (Array.isArray(payload)) {
+    return {
+      ...emptyPagination,
+      data: payload,
+      per_page: payload.length,
+      from: payload.length ? 1 : null,
+      to: payload.length || null,
+    };
+  }
+
+  return emptyPagination;
 };
 
 export default function AdminCustomersPage() {
@@ -18,6 +41,8 @@ export default function AdminCustomersPage() {
   const currentStore = stores.find((store) => String(store.store_id) === String(storeId));
 
   const [customers, setCustomers] = useState([]);
+  const [pagination, setPagination] = useState(emptyPagination);
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -29,18 +54,29 @@ export default function AdminCustomersPage() {
   const loadCustomers = async () => {
     if (!storeId) {
       setCustomers([]);
+      setPagination(emptyPagination);
       setLoading(false);
       return;
     }
 
     setLoading(true);
     setError('');
+
     try {
-      const response = await customerService.list({ store_id: storeId, search, per_page: 100 });
-      setCustomers(extractList(response));
+      const response = await customerService.list({
+        page,
+        store_id: storeId,
+        search,
+        per_page: 10,
+      });
+
+      const parsed = extractPagination(response);
+      setCustomers(parsed.data || []);
+      setPagination(parsed);
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load customers.');
       setCustomers([]);
+      setPagination(emptyPagination);
     } finally {
       setLoading(false);
     }
@@ -48,23 +84,22 @@ export default function AdminCustomersPage() {
 
   useEffect(() => {
     setCustomers([]);
+    setPagination(emptyPagination);
     setSearch('');
     setShowModal(false);
     setEditingId(null);
     setForm(initialForm);
     setError('');
+    setPage(1);
 
     if (!storeId) {
       setLoading(false);
-      return;
     }
-
-    loadCustomers();
   }, [storeId]);
 
   useEffect(() => {
     loadCustomers();
-  }, [storeId, search]);
+  }, [storeId, search, page]);
 
   const resetForm = () => {
     setForm(initialForm);
@@ -87,14 +122,18 @@ export default function AdminCustomersPage() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
+
     try {
       const payload = {
         store_id: Number(storeId),
         ...form,
       };
 
-      if (editingId) await customerService.update(editingId, payload);
-      else await customerService.create(payload);
+      if (editingId) {
+        await customerService.update(editingId, payload);
+      } else {
+        await customerService.create(payload);
+      }
 
       setShowModal(false);
       resetForm();
@@ -120,9 +159,15 @@ export default function AdminCustomersPage() {
 
   const handleDelete = async (customerId) => {
     if (!window.confirm('Delete this customer?')) return;
+
     try {
       await customerService.remove(customerId);
-      await loadCustomers();
+
+      if (customers.length === 1 && page > 1) {
+        setPage((prev) => prev - 1);
+      } else {
+        await loadCustomers();
+      }
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to delete customer.');
     }
@@ -131,13 +176,26 @@ export default function AdminCustomersPage() {
   return (
     <>
       <section className="stack-lg">
-        <div className="catalog-hero" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+        <div
+          className="catalog-hero"
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}
+        >
           <div className="catalog-hero-copy" style={{ display: 'flex', flexDirection: 'column' }}>
             <h2 className="catalog-title">Customers</h2>
-            <p className="catalog-subtitle">{customers.length} customer records</p>
+            <p className="catalog-subtitle">
+              {pagination.from && pagination.to
+                ? `Showing ${pagination.from}-${pagination.to}`
+                : `${customers.length} customer records`}
+            </p>
           </div>
 
-          <button type="button" className="ghost-button" onClick={openCreateModal} style={{ whiteSpace: 'nowrap' }} disabled={!storeId}>
+          <button
+            type="button"
+            className="ghost-button"
+            onClick={openCreateModal}
+            style={{ whiteSpace: 'nowrap' }}
+            disabled={!storeId}
+          >
             New customer
           </button>
         </div>
@@ -148,7 +206,10 @@ export default function AdminCustomersPage() {
               className="text-input"
               placeholder="Search customer"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
               disabled={!storeId}
             />
           </label>
@@ -170,9 +231,13 @@ export default function AdminCustomersPage() {
               </thead>
               <tbody>
                 {!storeId ? (
-                  <tr><td colSpan="4">Select a store first.</td></tr>
+                  <tr>
+                    <td colSpan="4">Select a store first.</td>
+                  </tr>
                 ) : loading ? (
-                  <tr><td colSpan="4">Loading...</td></tr>
+                  <tr>
+                    <td colSpan="4">Loading...</td>
+                  </tr>
                 ) : customers.length ? (
                   customers.map((customer) => (
                     <tr key={customer.customer_id}>
@@ -184,10 +249,18 @@ export default function AdminCustomersPage() {
                       <td>{currency(customer.current_balance, currentStore?.currency)}</td>
                       <td>
                         <div className="row-actions compact">
-                          <button type="button" className="ghost-button" onClick={() => handleEdit(customer)}>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => handleEdit(customer)}
+                          >
                             Edit
                           </button>
-                          <button type="button" className="ghost-button danger" onClick={() => handleDelete(customer.customer_id)}>
+                          <button
+                            type="button"
+                            className="ghost-button danger"
+                            onClick={() => handleDelete(customer.customer_id)}
+                          >
                             Delete
                           </button>
                         </div>
@@ -195,11 +268,42 @@ export default function AdminCustomersPage() {
                     </tr>
                   ))
                 ) : (
-                  <tr><td colSpan="4">No customers found.</td></tr>
+                  <tr>
+                    <td colSpan="4">No customers found.</td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </div>
+
+          {storeId ? (
+            <div
+              className="row-actions"
+              style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
+            >
+              <span className="muted">Page {pagination.current_page || page}</span>
+
+              <div className="row-actions compact">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={!pagination.prev_page_url || loading}
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => setPage((prev) => prev + 1)}
+                  disabled={!pagination.next_page_url || loading}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          ) : null}
         </article>
       </section>
 
@@ -211,7 +315,12 @@ export default function AdminCustomersPage() {
                 <h3>{editingId ? 'Edit customer' : 'New customer'}</h3>
                 <p className="muted">Create or update customer profile details.</p>
               </div>
-              <button type="button" className="icon-button" onClick={closeModal} disabled={submitting}>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={closeModal}
+                disabled={submitting}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -262,7 +371,12 @@ export default function AdminCustomersPage() {
                 {error ? <p className="form-error span-2">{error}</p> : null}
 
                 <div className="catalog-modal-actions span-2">
-                  <button type="button" className="ghost-button" onClick={closeModal} disabled={submitting}>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={closeModal}
+                    disabled={submitting}
+                  >
                     Cancel
                   </button>
                   <button className="catalog-primary-btn" type="submit" disabled={submitting}>

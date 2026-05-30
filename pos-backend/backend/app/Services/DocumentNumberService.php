@@ -16,11 +16,13 @@ class DocumentNumberService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$sequence) {
+            if (! $sequence) {
+                $defaultPrefix = $documentType === 'receipt' ? 'REC-' : 'INV-';
+
                 $sequence = DocumentSequence::create([
                     'store_id' => $storeId,
                     'document_type' => $documentType,
-                    'prefix' => strtoupper(substr($documentType, 0, 3)),
+                    'prefix' => $defaultPrefix,
                     'suffix' => '',
                     'last_number' => 0,
                 ]);
@@ -29,7 +31,12 @@ class DocumentNumberService
             $sequence->last_number += 1;
             $sequence->save();
 
-            return sprintf('%s-%05d%s', $sequence->prefix, $sequence->last_number, $sequence->suffix);
+            return sprintf(
+                '%s%04d%s',
+                $sequence->prefix ?? '',
+                $sequence->last_number,
+                $sequence->suffix ?? ''
+            );
         });
     }
 }

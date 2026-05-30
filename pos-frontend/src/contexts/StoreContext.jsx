@@ -52,7 +52,7 @@ export function StoreProvider({ children }) {
       if (user.role === 'admin') {
         setLoading(true);
         try {
-          const response = await storeService.list({ per_page: 200 });
+          const response = await storeService.list({ per_page: 10 });
           const apiStores = extractStores(response);
           const nextStores = apiStores.length ? apiStores : embeddedStores;
 

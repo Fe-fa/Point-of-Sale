@@ -12,13 +12,15 @@ use Illuminate\Http\Request;
 
 class ProductController extends Controller
 {
-    public function __construct(private readonly ProductService $service) {}
+    public function __construct(
+        private readonly ProductService $service
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
         return response()->json([
             'message' => 'Products retrieved successfully.',
-            'data'    => $this->service->paginate(
+            'data' => $this->service->paginate(
                 $request->user(),
                 $request->only('store_id', 'search', 'category_id', 'is_active', 'per_page')
             ),
@@ -29,15 +31,15 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Product created successfully.',
-            'data'    => $this->service->create($request->user(), $request->validated()),
+            'data' => $this->service->create($request->user(), $request->validated()),
         ], 201);
     }
 
-    public function show(Product $product): JsonResponse
+    public function show(Request $request, Product $product): JsonResponse
     {
         return response()->json([
             'message' => 'Product retrieved successfully.',
-            'data'    => $this->service->show($requestUser = request()->user(), $product),
+            'data' => $this->service->show($request->user(), $product),
         ]);
     }
 
@@ -45,13 +47,13 @@ class ProductController extends Controller
     {
         return response()->json([
             'message' => 'Product updated successfully.',
-            'data'    => $this->service->update($request->user(), $product, $request->validated()),
+            'data' => $this->service->update($request->user(), $product, $request->validated()),
         ]);
     }
 
-    public function destroy(Product $product): JsonResponse
+    public function destroy(Request $request, Product $product): JsonResponse
     {
-        $this->service->delete(request()->user(), $product);
+        $this->service->delete($request->user(), $product);
 
         return response()->json([
             'message' => 'Product deleted successfully.',

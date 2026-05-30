@@ -23,7 +23,6 @@ import { currency, formatDateTime } from '../../utils/helpers';
 import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
 import { mergeStoreSettings } from '../../utils/storeSettings';
 
-
 const PRODUCTS_PER_PAGE = 12;
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -67,7 +66,6 @@ const extractPaginator = (res) => {
   return null;
 };
 
-
 const getProductImage = (product) => {
   const rawPath =
     product?.image_url ||
@@ -78,10 +76,12 @@ const getProductImage = (product) => {
     product?.photo ||
     product?.media?.[0]?.url ||
     '';
+
   if (!rawPath) return '';
   if (rawPath.startsWith('http') || rawPath.startsWith('data:')) {
     return rawPath;
   }
+
   const cleanPath = rawPath.startsWith('/') ? rawPath.substring(1) : rawPath;
   return `${IMAGE_BASE_URL}${cleanPath}`;
 };
@@ -89,26 +89,10 @@ const getProductImage = (product) => {
 const getItemTotal = (item) =>
   Number(
     item?.total_amount ??
-    item?.line_total ??
-    item?.line_subtotal ??
-    Number(item?.quantity || 0) * Number(item?.unit_price || 0)
+      item?.line_total ??
+      item?.line_subtotal ??
+      Number(item?.quantity || 0) * Number(item?.unit_price || 0)
   );
-
-const buildPagination = (currentPage, totalPages) => {
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (currentPage <= 3) {
-    return [1, 2, 3, 4, '...', totalPages];
-  }
-
-  if (currentPage >= totalPages - 2) {
-    return [1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-  }
-
-  return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
-};
 
 const isTypingElement = (target) => {
   if (!(target instanceof HTMLElement)) return false;
@@ -145,8 +129,15 @@ export default function CashierPosPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [draftSearch, setDraftSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [productTotalPages, setProductTotalPages] = useState(1);
-  const [productTotalItems, setProductTotalItems] = useState(0);
+
+  const [productPageInfo, setProductPageInfo] = useState({
+    currentPage: 1,
+    hasNextPage: false,
+    hasPrevPage: false,
+    from: 0,
+    to: 0,
+    total: null,
+  });
 
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -251,130 +242,166 @@ export default function CashierPosPage() {
     throw new Error('Delete billing method is not implemented in billingService.');
   };
 
-  const loadStaticData = useCallback(async () => {
-    if (!storeId) return;
 
-    setCatalogLoading(true);
-    setError('');
+  
+const loadStaticData = useCallback(async () => {
+  if (!storeId) return;
 
-    try {
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('API request timeout after 10 seconds')), 10000)
-      );
+  setCatalogLoading(true);
+  setError('');
 
-      // Race the parallel API requests against the 10-second timeout clock
-      const [categoriesRes, customersRes] = await Promise.race([
-        Promise.all([
-          categoryService.list({
-            store_id: Number(storeId),
-            per_page: 12,
-          }),
-          customerService.list({
-            store_id: Number(storeId),
-            per_page: 12,
-          }),
-        ]),
-        timeoutPromise
-      ]);
+  // 💡 A local flag to track if this specific hook instance is still active
+  let isMounted = true;
 
+  try {
+    // 1. Fetch categories cleanly
+    const categoriesRes = await categoryService.list({
+      store_id: Number(storeId),
+      per_page: 12,
+    });
+
+    // 2. Fetch customers/products sequentially right after
+    const customersRes = await customerService.list({
+      store_id: Number(storeId),
+      per_page: 12,
+    });
+
+    // 💡 Only update React state if the user hasn't navigate away or changed settings
+    if (isMounted) {
       setCategories(extractList(categoriesRes));
       setCustomers(extractList(customersRes));
-    } catch (err) {
-      setError(
-        `Failed to load catalog: ${err?.response?.data?.message || err?.message || 'Unknown error'
-        }`
-      );
-      setCategories([]);
-      setCustomers([]);
-    } finally {
+    }
+
+  } catch (err) {
+    if (!isMounted) return;
+
+    console.error("Intercepted UI Error:", err);
+    setError(
+      `Failed to load catalog: ${
+        err?.response?.data?.message || err?.message || 'Network Error'
+      }`
+    );
+    setCategories([]);
+    setCustomers([]);
+  } finally {
+    if (isMounted) {
       setCatalogLoading(false);
     }
-  }, [storeId]);
+  }
 
-  const loadProducts = useCallback(
-    async (page = 1, { force = false } = {}) => {
-      if (!storeId) return;
+  // Cleanup handler: sets the flag to false if storeId shifts rapidly
+  return () => {
+    isMounted = false;
+  };
+}, [storeId]);
 
-      const normalizedSearch = debouncedSearch.trim();
-      const cacheKey = JSON.stringify({
-        storeId: String(storeId),
+
+
+const loadProducts = useCallback(
+  async (page = 1, { force = false } = {}) => {
+    if (!storeId) return;
+
+    const normalizedSearch = debouncedSearch.trim();
+    const cacheKey = JSON.stringify({
+      storeId: String(storeId),
+      page,
+      category: String(activeCategory),
+      search: normalizedSearch.toLowerCase(),
+    });
+
+    if (!force && productCacheRef.current.has(cacheKey)) {
+      const cached = productCacheRef.current.get(cacheKey);
+      setProducts(cached.items);
+      setProductPageInfo(cached.pageInfo);
+
+      if (page !== cached.pageInfo.currentPage) {
+        setCurrentPage(cached.pageInfo.currentPage);
+      }
+      return;
+    }
+
+    setProductsLoading(true);
+    const requestId = ++productRequestIdRef.current;
+
+    try {
+      const params = {
+        store_id: Number(storeId),
+        per_page: PRODUCTS_PER_PAGE,
         page,
-        category: String(activeCategory),
-        search: normalizedSearch.toLowerCase(),
+        is_active: true,
+      };
+
+      if (activeCategory !== 'all') {
+        params.category_id = Number(activeCategory);
+      }
+
+      if (normalizedSearch) {
+        params.search = normalizedSearch;
+      }
+
+      const response = await productService.list(params);
+
+      if (requestId !== productRequestIdRef.current) return;
+
+      // Unpack response objects assuming uniform controller output
+      const meta = response?.meta || response; 
+      const items = extractList(response);
+
+      const nextPage = Number(meta?.current_page || page);
+
+      // 💡 Optimized Simple Paginator Checks:
+      // Reads has_more directly from backend meta or checks next_page_url text values
+      const hasNextPage = typeof meta?.has_more !== 'undefined' 
+        ? Boolean(meta.has_more) 
+        : Boolean(meta?.next_page_url);
+
+      const hasPrevPage = nextPage > 1;
+
+      // Safe bounds calculator without requiring database aggregators
+      const from = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + 1 : 0;
+      const to = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + items.length : 0;
+
+      const pageInfo = {
+        currentPage: nextPage,
+        hasNextPage,
+        hasPrevPage,
+        from,
+        to,
+        total: null, // 💡 Hard-set to null to completely decouple UI from backend counter queries
+      };
+
+      productCacheRef.current.set(cacheKey, {
+        items,
+        pageInfo,
       });
 
-      if (!force && productCacheRef.current.has(cacheKey)) {
-        const cached = productCacheRef.current.get(cacheKey);
-        setProducts(cached.items);
-        setProductTotalPages(cached.totalPages);
-        setProductTotalItems(cached.totalItems);
+      setProducts(items);
+      setProductPageInfo(pageInfo);
 
-        if (page !== cached.currentPage) {
-          setCurrentPage(cached.currentPage);
-        }
-        return;
+      if (nextPage !== page) {
+        setCurrentPage(nextPage);
       }
+    } catch (err) {
+      if (requestId !== productRequestIdRef.current) return;
 
-      setProductsLoading(true);
-      const requestId = ++productRequestIdRef.current;
-
-      try {
-        const params = {
-          store_id: Number(storeId),
-          per_page: PRODUCTS_PER_PAGE,
-          page,
-          is_active: true,
-        };
-
-        if (activeCategory !== 'all') {
-          params.category_id = Number(activeCategory);
-        }
-
-        if (normalizedSearch) {
-          params.search = normalizedSearch;
-        }
-
-        const response = await productService.list(params);
-
-        if (requestId !== productRequestIdRef.current) return;
-
-        const paginator = extractPaginator(response);
-        const items = extractList(response);
-        const nextPage = Number(paginator?.current_page || page);
-        const totalPages = Math.max(1, Number(paginator?.last_page || 1));
-        const totalItems = Number(paginator?.total || items.length);
-
-        const nextState = {
-          items,
-          totalPages,
-          totalItems,
-          currentPage: nextPage,
-        };
-
-        productCacheRef.current.set(cacheKey, nextState);
-
-        setProducts(items);
-        setProductTotalPages(totalPages);
-        setProductTotalItems(totalItems);
-
-        if (nextPage !== page) {
-          setCurrentPage(nextPage);
-        }
-      } catch (err) {
-        if (requestId !== productRequestIdRef.current) return;
-
-        setError(err?.response?.data?.message || err?.message || 'Failed to load products.');
-        setProducts([]);
-        setProductTotalPages(1);
-        setProductTotalItems(0);
-      } finally {
-        if (requestId === productRequestIdRef.current) {
-          setProductsLoading(false);
-        }
+      setError(err?.response?.data?.message || err?.message || 'Failed to load products.');
+      setProducts([]);
+      setProductPageInfo({
+        currentPage: 1,
+        hasNextPage: false,
+        hasPrevPage: false,
+        from: 0,
+        to: 0,
+        total: null,
+      });
+    } finally {
+      if (requestId === productRequestIdRef.current) {
+        setProductsLoading(false);
       }
-    },
-    [storeId, activeCategory, debouncedSearch]
-  );
+    }
+  },
+  [storeId, activeCategory, debouncedSearch]
+);
 
   const loadDrafts = useCallback(
     async ({ silent = false } = {}) => {
@@ -386,14 +413,16 @@ export default function CashierPosPage() {
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error('Drafts request timeout after 10 seconds')), 10000)
         );
+
         const response = await Promise.race([
           billingService.list({
             store_id: Number(storeId),
             per_page: 12,
             is_draft: true,
           }),
-          timeoutPromise
+          timeoutPromise,
         ]);
+
         const data = extractList(response);
         const filtered = (Array.isArray(data) ? data : []).filter((item) =>
           isOwnedByCurrentCashier(item)
@@ -465,19 +494,23 @@ export default function CashierPosPage() {
     setDraftSearch('');
     setActiveCategory('all');
     setCurrentPage(1);
-    setProductTotalPages(1);
-    setProductTotalItems(0);
+    setProductPageInfo({
+      currentPage: 1,
+      hasNextPage: false,
+      hasPrevPage: false,
+      from: 0,
+      to: 0,
+      total: null,
+    });
+
     productCacheRef.current.clear();
     lastProductFilterRef.current = '';
 
     const initializePosData = async () => {
       try {
-        await Promise.all([
-          loadStaticData(),
-          loadDrafts({ silent: true })
-        ]);
+        await Promise.all([loadStaticData(), loadDrafts({ silent: true })]);
       } catch (err) {
-        console.error("Failed to initialize baseline POS data:", err);
+        console.error('Failed to initialize baseline POS data:', err);
       }
     };
 
@@ -918,14 +951,6 @@ export default function CashierPosPage() {
     handleEscapeShortcut,
   ]);
 
-  const visiblePages = useMemo(
-    () => buildPagination(currentPage, productTotalPages),
-    [currentPage, productTotalPages]
-  );
-
-  const startItem = productTotalItems === 0 ? 0 : (currentPage - 1) * PRODUCTS_PER_PAGE + 1;
-  const endItem = Math.min(currentPage * PRODUCTS_PER_PAGE, productTotalItems);
-
   const itemCount =
     billing?.items?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0;
 
@@ -985,11 +1010,11 @@ export default function CashierPosPage() {
       </section>
     );
   }
-
   return (
     <>
       <section className="pos-grid cashier-pos-page">
         <div className="pos-catalog stack-lg">
+          
           <div className="card hero-card compact-hero">
             <div className="store-header-layout">
               <div className="store-brand-identity">
@@ -1013,7 +1038,6 @@ export default function CashierPosPage() {
                   {currentStore?.email_address || ''}
                 </p>
               </div>
-
             </div>
           </div>
 
@@ -1041,8 +1065,9 @@ export default function CashierPosPage() {
                 <button
                   key={category.category_id}
                   type="button"
-                  className={`chip ${String(activeCategory) === String(category.category_id) ? 'active' : ''
-                    }`}
+                  className={`chip ${
+                    String(activeCategory) === String(category.category_id) ? 'active' : ''
+                  }`}
                   onClick={() => setActiveCategory(category.category_id)}
                 >
                   {category.category_name}
@@ -1084,7 +1109,6 @@ export default function CashierPosPage() {
                             disabled={submitting}
                             onClick={() => handlePayNow(product)}
                           >
-                            <Wallet size={16} />
                             Pay Now
                           </button>
 
@@ -1094,11 +1118,11 @@ export default function CashierPosPage() {
                             disabled={submitting}
                             onClick={() => handleAddProduct(product)}
                           >
-                            <ShoppingCart size={16} />
                             Add
                           </button>
                         </div>
                       </div>
+
                       <div className="product-card-info">
                         <h3>{product.product_name}</h3>
                         <strong>{currency(product.price, currentStore?.currency)}</strong>
@@ -1114,70 +1138,44 @@ export default function CashierPosPage() {
                 ) : null}
               </div>
 
-              {productTotalItems > 0 ? (
+              {products.length > 0 ? (
                 <div className="pagination-bar">
                   <div className="pagination-summary">
-                    Showing <strong>{startItem}</strong> - <strong>{endItem}</strong> of{' '}
-                    <strong>{productTotalItems}</strong> products
+                    {productPageInfo.total !== null ? (
+                      <>
+                        Showing <strong>{productPageInfo.from}</strong> -{' '}
+                        <strong>{productPageInfo.to}</strong> of{' '}
+                        <strong>{productPageInfo.total}</strong> products
+                      </>
+                    ) : (
+                      <>
+                        Showing <strong>{productPageInfo.from}</strong> -{' '}
+                        <strong>{productPageInfo.to}</strong> products
+                      </>
+                    )}
                   </div>
 
                   <div className="pagination-controls">
                     <button
                       type="button"
                       className="ghost-button pagination-btn"
-                      onClick={() => setCurrentPage(1)}
-                      disabled={currentPage === 1 || productsLoading}
-                    >
-                      First
-                    </button>
-
-                    <button
-                      type="button"
-                      className="ghost-button pagination-btn"
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      disabled={currentPage === 1 || productsLoading}
+                      disabled={!productPageInfo.hasPrevPage || productsLoading}
                     >
                       Previous
                     </button>
 
-                    <div className="pagination-pages">
-                      {visiblePages.map((page, index) =>
-                        page === '...' ? (
-                          <span key={`ellipsis-${index}`} className="pagination-ellipsis">
-                            ...
-                          </span>
-                        ) : (
-                          <button
-                            key={page}
-                            type="button"
-                            className={`pagination-page-btn ${currentPage === page ? 'active' : ''}`}
-                            onClick={() => setCurrentPage(page)}
-                            disabled={productsLoading}
-                          >
-                            {page}
-                          </button>
-                        )
-                      )}
-                    </div>
+                    <span className="pagination-page-indicator">
+                      Page <strong>{productPageInfo.currentPage}</strong>
+                    </span>
 
                     <button
                       type="button"
                       className="ghost-button pagination-btn"
-                      onClick={() =>
-                        setCurrentPage((prev) => Math.min(prev + 1, productTotalPages))
-                      }
-                      disabled={currentPage === productTotalPages || productsLoading}
+                      onClick={() => setCurrentPage((prev) => prev + 1)}
+                      disabled={!productPageInfo.hasNextPage || productsLoading}
                     >
                       Next
-                    </button>
-
-                    <button
-                      type="button"
-                      className="ghost-button pagination-btn"
-                      onClick={() => setCurrentPage(productTotalPages)}
-                      disabled={currentPage === productTotalPages || productsLoading}
-                    >
-                      Last
                     </button>
                   </div>
                 </div>
@@ -1201,6 +1199,7 @@ export default function CashierPosPage() {
                 <span>{itemCount} items</span>
               </div>
             </div>
+
             <div className="customer-billing-section">
               {selectedCustomerId ? (
                 <div className="selected-customer-box">
@@ -1240,6 +1239,7 @@ export default function CashierPosPage() {
                 </div>
               )}
             </div>
+
             <div className="hero-quick-actions">
               <button
                 type="button"
@@ -1253,22 +1253,24 @@ export default function CashierPosPage() {
                 Drafts ({drafts.length})
               </button>
 
-              {draftsLoading && (
-                <span className="inline-note-spinner">
-                  Refreshing drafts...
-                </span>
-              )}
+              {draftsLoading && <span className="inline-note-spinner">Refreshing drafts...</span>}
             </div>
-
           </div>
 
           <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              className="card-header"
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
               <div>
                 <h3>Billing items</h3>
                 {billingLoading ? <p>Refreshing billing...</p> : null}
               </div>
-              <div className="header-action-icons-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+              <div
+                className="header-action-icons-row"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
                 <button
                   type="button"
                   className="ghost-button"
@@ -1305,6 +1307,7 @@ export default function CashierPosPage() {
                 </button>
               </div>
             </div>
+
             <div className="billing-items-list">
               {billing?.items?.length ? (
                 billing.items.map((item) => (
@@ -1313,10 +1316,12 @@ export default function CashierPosPage() {
                       <strong className="product-name">{item.product?.product_name}</strong>
                       <div className="vat-meta-wrapper">
                         <span className="vat-badge">
-                          {item.vat_amount !== undefined && ` +${Number(item.vat_amount).toFixed(2)}`} (VAT)
+                          {item.vat_amount !== undefined &&
+                            ` +${Number(item.vat_amount).toFixed(2)}`} (VAT)
                         </span>
                       </div>
                     </div>
+
                     <div className="billing-item-actions">
                       <div className="quantity-control">
                         <button
@@ -1353,13 +1358,13 @@ export default function CashierPosPage() {
                         <Trash2 size={14} />
                       </button>
                     </div>
-
                   </div>
                 ))
               ) : (
-                <p className="muted">Hover a product to add it...</p>
+                <p className="muted">Empty billing...hover over a product to add it.</p>
               )}
             </div>
+
             <div className="billing-summary-container">
               <div className="billing-summary-list">
                 <div className="summary-row">
@@ -1375,7 +1380,9 @@ export default function CashierPosPage() {
                     {currency(billing?.vat_amount || 0, currentStore?.currency)}
                   </span>
                 </div>
+
                 <div className="summary-divider"></div>
+
                 <div className="summary-row total-accent-row">
                   <span className="total-label">Total Amount</span>
                   <strong className="total-value">
@@ -1384,6 +1391,7 @@ export default function CashierPosPage() {
                 </div>
               </div>
             </div>
+
             <div className="billing-bottom-actions">
               <button
                 type="button"
@@ -1396,23 +1404,6 @@ export default function CashierPosPage() {
               </button>
             </div>
           </div>
-
-          {/* <div className="billing-summary-grid medium-layout">
-              <div className="summary-box">
-                <span>Net Amount</span>
-                <strong>{currency(billing?.subtotal || 0, currentStore?.currency)}</strong>
-              </div>
-
-              <div className="summary-box">
-                <span>VAT ({Number(billing?.vat_rate || 16)}%)</span>
-                <strong>{currency(billing?.vat_amount || 0, currentStore?.currency)}</strong>
-              </div>
-
-              <div className="summary-box accent">
-                <span>Total Amount</span>
-                <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
-              </div>
-            </div> */}
         </aside>
       </section>
 
@@ -1438,7 +1429,7 @@ export default function CashierPosPage() {
             <div className="modal-content payment-modal-content">
               <div className="payment-summary-strip">
                 <div className="payment-summary-pill">
-                  <span>To tal due</span>
+                  <span>Total due</span>
                   <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
                 </div>
 
@@ -1467,7 +1458,9 @@ export default function CashierPosPage() {
                     <button
                       key={method.key}
                       type="button"
-                      className={`payment-method-card ${paymentMethod === method.key ? 'active' : ''}`}
+                      className={`payment-method-card ${
+                        paymentMethod === method.key ? 'active' : ''
+                      }`}
                       onClick={() => handlePaymentMethodChange(method.key)}
                     >
                       <div className="payment-method-card-top">
@@ -1660,8 +1653,9 @@ export default function CashierPosPage() {
                 filteredDrafts.map((draft) => (
                   <div
                     key={draft.billing_id}
-                    className={`draft-modal-row ${String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
-                      }`}
+                    className={`draft-modal-row ${
+                      String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
+                    }`}
                   >
                     <button
                       type="button"

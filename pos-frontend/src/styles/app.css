@@ -98,8 +98,8 @@ img {
   background: var(--bg);
 }
 
-.main-shell,
-.cashier-shell {
+.main-shell
+{
   min-width: 0;
 }
 

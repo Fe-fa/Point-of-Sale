@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\Billing;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Contracts\Pagination\Paginator as PaginatorContract;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -95,9 +95,9 @@ class BillingService
         }
     }
 
-    public function paginate(User $user, array $filters = []): LengthAwarePaginator
+    public function paginate(User $user, array $filters = []): PaginatorContract
     {
-        $perPage = (int) ($filters['per_page'] ?? 15);
+        $perPage = max(1, min((int) ($filters['per_page'] ?? 10), 100));
 
         $query = Billing::query()
             ->with(['customer', 'store', 'user', 'payments'])
@@ -127,7 +127,7 @@ class BillingService
             $query->where('is_draft', filter_var($filters['is_draft'], FILTER_VALIDATE_BOOLEAN));
         }
 
-        return $query->paginate($perPage);
+        return $query->simplePaginate($perPage)->withQueryString();
     }
 
     public function createDraft(User $user, array $data): Billing

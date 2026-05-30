@@ -39,7 +39,7 @@ class CustomerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $perPage = (int)($request->get('per_page', 15));
+        $perPage = max(1, min((int) $request->get('per_page', 10), 100));
 
         $q = Customer::query()
             ->orderByDesc('customer_id');
@@ -54,17 +54,17 @@ class CustomerController extends Controller
         }
 
         if ($request->filled('search')) {
-            $s = trim((string)$request->search);
+            $s = trim((string) $request->search);
             $q->where(function ($w) use ($s) {
                 $w->where('full_name', 'like', "%{$s}%")
-                  ->orWhere('phone', 'like', "%{$s}%")
-                  ->orWhere('email', 'like', "%{$s}%");
+                    ->orWhere('phone', 'like', "%{$s}%")
+                    ->orWhere('email', 'like', "%{$s}%");
             });
         }
 
         return response()->json([
             'message' => 'Customers retrieved successfully.',
-            'data' => $q->paginate($perPage),
+            'data' => $q->simplePaginate($perPage)->withQueryString(),
         ]);
     }
 

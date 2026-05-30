@@ -34,7 +34,7 @@ export default function AdminCategoriesPage() {
     setLoading(true);
     setError('');
     try {
-      const response = await categoryService.list({ store_id: storeId, search, per_page: 100 });
+      const response = await categoryService.list({ store_id: storeId, search, per_page: 10 });
       setCategories(extractList(response));
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load categories.');
@@ -112,22 +112,21 @@ export default function AdminCategoriesPage() {
   };
 
   const handleEdit = (category) => {
-    setEditingId(category.category_id);
+    setEditingId(category.category_uuid);
     setForm({ category_name: category.category_name || '' });
     setError('');
     setShowModal(true);
   };
 
-  const handleDelete = async (categoryId) => {
+  const handleDelete = async (category) => {
     if (!window.confirm('Delete this category?')) return;
     try {
-      await categoryService.remove(categoryId);
+      await categoryService.remove(category.category_uuid);
       await loadCategories();
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to delete category.');
     }
   };
-
   return (
     <>
       <section className="stack-lg">
@@ -174,7 +173,7 @@ export default function AdminCategoriesPage() {
                   <tr><td colSpan="3">Loading...</td></tr>
                 ) : categories.length ? (
                   categories.map((category) => (
-                    <tr key={category.category_id}>
+                    <tr key={category.category_uuid}>
                       <td>{category.category_name}</td>
                       <td>{category.products_count || 0}</td>
                       <td>
@@ -182,7 +181,7 @@ export default function AdminCategoriesPage() {
                           <button type="button" className="ghost-button" onClick={() => handleEdit(category)}>
                             Edit
                           </button>
-                          <button type="button" className="ghost-button danger" onClick={() => handleDelete(category.category_id)}>
+                          <button type="button" className="ghost-button danger" onClick={() => handleDelete(category.category_uuid)}>
                             Delete
                           </button>
                         </div>

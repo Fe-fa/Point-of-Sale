@@ -22,7 +22,8 @@ class BillingItemController extends Controller
             'data' => $this->service->getItems(
                 $billing,
                 $request->boolean('with_trashed'),
-                $request->boolean('only_trashed')
+                $request->boolean('only_trashed'),
+                (int) $request->get('per_page', 10)
             ),
         ]);
     }

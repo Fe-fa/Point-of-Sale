@@ -123,14 +123,14 @@ export default function AdminDashboardPage() {
           usersRes,
           ...restResponses
         ] = await Promise.all([
-          productService.list({ per_page: 200 }),
-          customerService.list({ per_page: 200 }),
+          productService.list({ per_page: 10 }),
+          customerService.list({ per_page: 10 }),
           userService.list({
-            per_page: 200,
+            per_page: 10,
             ...(isAdmin ? {} : { store_id: storeId }),
           }),
-          ...scopedStoreIds.map((id) => billingService.list({ per_page: 200, store_id: id })),
-          ...scopedStoreIds.map((id) => inventoryService.list({ per_page: 200, store_id: id })),
+          ...scopedStoreIds.map((id) => billingService.list({ per_page: 10, store_id: id })),
+          ...scopedStoreIds.map((id) => inventoryService.list({ per_page: 10, store_id: id })),
         ]);
 
         const billingResponses = restResponses.slice(0, scopedStoreIds.length);
