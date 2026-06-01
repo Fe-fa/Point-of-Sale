@@ -20,7 +20,16 @@ class BillingController extends Controller
             'message' => 'Billings retrieved successfully.',
             'data' => $this->service->paginate(
                 $request->user(),
-                $request->only('store_id', 'status', 'is_draft', 'per_page', 'with_trashed', 'only_trashed')
+                $request->only(
+                    'store_id',
+                    'status',
+                    'is_draft',
+                    'per_page',
+                    'with_trashed',
+                    'only_trashed',
+                    'fulfillment_status',
+                    'fulfillment_type'
+                )
             ),
         ]);
     }
@@ -35,12 +44,12 @@ class BillingController extends Controller
 
     public function show($id): JsonResponse
     {
-        $billing = Billing::find($id);
+        $billing = Billing::withTrashed()->find($id);
 
         if (!$billing) {
             return response()->json([
                 'message' => "Billing record #{$id} was not found in our system.",
-                'data' => null
+                'data' => null,
             ], 404);
         }
 
@@ -52,12 +61,12 @@ class BillingController extends Controller
 
     public function update(UpdateBillingRequest $request, $id): JsonResponse
     {
-        $billing = Billing::find($id);
+        $billing = Billing::withTrashed()->find($id);
 
         if (!$billing) {
             return response()->json([
                 'message' => "Update failed: Billing record #{$id} does not exist.",
-                'debug_info' => 'Check if the record was deleted or if the database was refreshed.'
+                'debug_info' => 'Check if the record was deleted or if the database was refreshed.',
             ], 404);
         }
 

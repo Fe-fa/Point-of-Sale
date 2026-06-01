@@ -42,7 +42,6 @@ const managerNavItems = [
   { to: '/admin/inventory', label: 'Inventory', icon: Warehouse },
   { to: '/admin/billings', label: 'Billings', icon: ReceiptText },
   { to: '/admin/orders', label: 'Orders', icon: ShoppingBasket },
-  { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AdminLayout() {

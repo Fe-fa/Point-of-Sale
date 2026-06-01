@@ -238,7 +238,15 @@ export default function AdminBillingsPage() {
 
   return (
     <section className="stack-lg">
-      <div className="section-header">
+      <div className="section-header" style={{ justifyContent: 'space-between', gap: 16 }}>
+        <div>
+          <h2>Billings</h2>
+          <p>
+            Accounting and finance view for managers. Track legal billing references, totals,
+            payments, balances, and tax-related records.
+          </p>
+        </div>
+
         <div className="row-actions compact" style={{ flexWrap: 'wrap' }}>
           <select
             className="select-input slim"
@@ -269,9 +277,9 @@ export default function AdminBillingsPage() {
             <option value="trashed">Trash only</option>
             <option value="all">All records</option>
           </select>
-        </div>
 
-        <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
+          <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
+        </div>
       </div>
 
       <article className="card">
@@ -293,7 +301,7 @@ export default function AdminBillingsPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Invoice</th>
+                <th>Billing Ref</th>
                 <th>Customer</th>
                 <th>Total</th>
                 <th>Paid</th>
@@ -415,7 +423,7 @@ export default function AdminBillingsPage() {
           <div className="stack-md">
             <div className="detail-grid">
               <div>
-                <p className="muted">Invoice</p>
+                <p className="muted">Billing ref</p>
                 <strong>{selectedBilling.invnumber || `Draft #${selectedBilling.billing_id}`}</strong>
               </div>
 

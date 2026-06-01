@@ -102,6 +102,7 @@ class BillingService
         $query = Billing::query()
             ->with(['customer', 'store', 'user', 'payments'])
             ->withCount('items')
+            ->withSum('items', 'quantity')
             ->orderByDesc('billing_id');
 
         if (!empty($filters['with_trashed']) && filter_var($filters['with_trashed'], FILTER_VALIDATE_BOOLEAN)) {
@@ -127,6 +128,14 @@ class BillingService
             $query->where('is_draft', filter_var($filters['is_draft'], FILTER_VALIDATE_BOOLEAN));
         }
 
+        if (!empty($filters['fulfillment_status'])) {
+            $query->where('fulfillment_status', $filters['fulfillment_status']);
+        }
+
+        if (!empty($filters['fulfillment_type'])) {
+            $query->where('fulfillment_type', $filters['fulfillment_type']);
+        }
+
         return $query->simplePaginate($perPage)->withQueryString();
     }
 
@@ -148,6 +157,8 @@ class BillingService
             'is_draft' => true,
             'billing_date' => now(),
             'notes' => $data['notes'] ?? null,
+            'fulfillment_status' => $data['fulfillment_status'] ?? 'pending',
+            'fulfillment_type' => $data['fulfillment_type'] ?? 'walk_in_counter',
         ]);
 
         $this->auditLogService->log(
@@ -167,6 +178,8 @@ class BillingService
         $this->authorizeBillingAccess($billing);
 
         $billing->load(['customer', 'store', 'user', 'items.product.category', 'payments']);
+        $billing->loadCount('items');
+        $billing->loadSum('items', 'quantity');
 
         $this->auditLogService->log(
             'billing.view',
@@ -193,6 +206,12 @@ class BillingService
             'notes' => array_key_exists('notes', $data)
                 ? $data['notes']
                 : $billing->notes,
+            'fulfillment_status' => array_key_exists('fulfillment_status', $data)
+                ? $data['fulfillment_status']
+                : $billing->fulfillment_status,
+            'fulfillment_type' => array_key_exists('fulfillment_type', $data)
+                ? $data['fulfillment_type']
+                : $billing->fulfillment_type,
         ]);
 
         $this->auditLogService->log(
@@ -204,7 +223,7 @@ class BillingService
             $billing->store_id
         );
 
-        return $billing->fresh()->load(['customer', 'store', 'items.product']);
+        return $billing->fresh()->load(['customer', 'store', 'items.product', 'payments']);
     }
 
     public function recalculateTotals(Billing $billing): Billing
