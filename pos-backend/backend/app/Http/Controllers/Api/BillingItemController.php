@@ -23,7 +23,7 @@ class BillingItemController extends Controller
                 $billing,
                 $request->boolean('with_trashed'),
                 $request->boolean('only_trashed'),
-                (int) $request->get('per_page', 10)
+                (int) $request->get('per_page', 20)
             ),
         ]);
     }

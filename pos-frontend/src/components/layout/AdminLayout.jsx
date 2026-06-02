@@ -35,7 +35,8 @@ const adminNavItems = [
 
 const managerNavItems = [
   { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/users', label: 'Cashiers', icon: Users },
+  { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/cashiers', label: 'Cashiers', icon: Users },
   { to: '/admin/customers', label: 'Customers', icon: Users },
   { to: '/admin/categories', label: 'Categories', icon: Boxes },
   { to: '/admin/products', label: 'Products', icon: Package },

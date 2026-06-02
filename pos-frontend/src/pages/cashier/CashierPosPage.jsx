@@ -47,6 +47,7 @@ const paymentMethods = [
   },
 ];
 
+
 const extractList = (res) => {
   if (Array.isArray(res?.data?.data)) return res.data.data;
   if (Array.isArray(res?.data)) return res.data;
@@ -89,9 +90,9 @@ const getProductImage = (product) => {
 const getItemTotal = (item) =>
   Number(
     item?.total_amount ??
-      item?.line_total ??
-      item?.line_subtotal ??
-      Number(item?.quantity || 0) * Number(item?.unit_price || 0)
+    item?.line_total ??
+    item?.line_subtotal ??
+    Number(item?.quantity || 0) * Number(item?.unit_price || 0)
   );
 
 const isTypingElement = (target) => {
@@ -185,6 +186,10 @@ export default function CashierPosPage() {
     },
     [user]
   );
+  // Calculate change/balance automatically
+const balanceDue = amountTendered && amountReceived 
+  ? (Number(amountTendered) - Number(amountReceived)).toFixed(2) 
+  : '0.00';
 
   const resetPaymentState = (total = '') => {
     setPaymentMethod('');
@@ -243,165 +248,155 @@ export default function CashierPosPage() {
   };
 
 
-  
-const loadStaticData = useCallback(async () => {
-  if (!storeId) return;
 
-  setCatalogLoading(true);
-  setError('');
-
-  // 💡 A local flag to track if this specific hook instance is still active
-  let isMounted = true;
-
-  try {
-    // 1. Fetch categories cleanly
-    const categoriesRes = await categoryService.list({
-      store_id: Number(storeId),
-      per_page: 12,
-    });
-
-    // 2. Fetch customers/products sequentially right after
-    const customersRes = await customerService.list({
-      store_id: Number(storeId),
-      per_page: 12,
-    });
-
-    // 💡 Only update React state if the user hasn't navigate away or changed settings
-    if (isMounted) {
-      setCategories(extractList(categoriesRes));
-      setCustomers(extractList(customersRes));
-    }
-
-  } catch (err) {
-    if (!isMounted) return;
-
-    console.error("Intercepted UI Error:", err);
-    setError(
-      `Failed to load catalog: ${
-        err?.response?.data?.message || err?.message || 'Network Error'
-      }`
-    );
-    setCategories([]);
-    setCustomers([]);
-  } finally {
-    if (isMounted) {
-      setCatalogLoading(false);
-    }
-  }
-
-  // Cleanup handler: sets the flag to false if storeId shifts rapidly
-  return () => {
-    isMounted = false;
-  };
-}, [storeId]);
-
-
-
-const loadProducts = useCallback(
-  async (page = 1, { force = false } = {}) => {
+  const loadStaticData = useCallback(async () => {
     if (!storeId) return;
 
-    const normalizedSearch = debouncedSearch.trim();
-    const cacheKey = JSON.stringify({
-      storeId: String(storeId),
-      page,
-      category: String(activeCategory),
-      search: normalizedSearch.toLowerCase(),
-    });
-
-    if (!force && productCacheRef.current.has(cacheKey)) {
-      const cached = productCacheRef.current.get(cacheKey);
-      setProducts(cached.items);
-      setProductPageInfo(cached.pageInfo);
-
-      if (page !== cached.pageInfo.currentPage) {
-        setCurrentPage(cached.pageInfo.currentPage);
-      }
-      return;
-    }
-
-    setProductsLoading(true);
-    const requestId = ++productRequestIdRef.current;
+    setCatalogLoading(true);
+    setError('');
+    let isMounted = true;
 
     try {
-      const params = {
+      const categoriesRes = await categoryService.list({
         store_id: Number(storeId),
-        per_page: PRODUCTS_PER_PAGE,
-        page,
-        is_active: true,
-      };
-
-      if (activeCategory !== 'all') {
-        params.category_id = Number(activeCategory);
-      }
-
-      if (normalizedSearch) {
-        params.search = normalizedSearch;
-      }
-
-      const response = await productService.list(params);
-
-      if (requestId !== productRequestIdRef.current) return;
-
-      // Unpack response objects assuming uniform controller output
-      const meta = response?.meta || response; 
-      const items = extractList(response);
-
-      const nextPage = Number(meta?.current_page || page);
-
-      // 💡 Optimized Simple Paginator Checks:
-      // Reads has_more directly from backend meta or checks next_page_url text values
-      const hasNextPage = typeof meta?.has_more !== 'undefined' 
-        ? Boolean(meta.has_more) 
-        : Boolean(meta?.next_page_url);
-
-      const hasPrevPage = nextPage > 1;
-
-      // Safe bounds calculator without requiring database aggregators
-      const from = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + 1 : 0;
-      const to = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + items.length : 0;
-
-      const pageInfo = {
-        currentPage: nextPage,
-        hasNextPage,
-        hasPrevPage,
-        from,
-        to,
-        total: null, // 💡 Hard-set to null to completely decouple UI from backend counter queries
-      };
-
-      productCacheRef.current.set(cacheKey, {
-        items,
-        pageInfo,
+        per_page: 12,
       });
-
-      setProducts(items);
-      setProductPageInfo(pageInfo);
-
-      if (nextPage !== page) {
-        setCurrentPage(nextPage);
+      const customersRes = await customerService.list({
+        store_id: Number(storeId),
+        per_page: 12,
+      });
+      if (isMounted) {
+        setCategories(extractList(categoriesRes));
+        setCustomers(extractList(customersRes));
       }
+
     } catch (err) {
-      if (requestId !== productRequestIdRef.current) return;
+      if (!isMounted) return;
 
-      setError(err?.response?.data?.message || err?.message || 'Failed to load products.');
-      setProducts([]);
-      setProductPageInfo({
-        currentPage: 1,
-        hasNextPage: false,
-        hasPrevPage: false,
-        from: 0,
-        to: 0,
-        total: null,
-      });
+      console.error("Intercepted UI Error:", err);
+      setError(
+        `Failed to load catalog: ${err?.response?.data?.message || err?.message || 'Network Error'
+        }`
+      );
+      setCategories([]);
+      setCustomers([]);
     } finally {
-      if (requestId === productRequestIdRef.current) {
-        setProductsLoading(false);
+      if (isMounted) {
+        setCatalogLoading(false);
       }
     }
-  },
-  [storeId, activeCategory, debouncedSearch]
-);
+    return () => {
+      isMounted = false;
+    };
+  }, [storeId]);
+
+
+
+  const loadProducts = useCallback(
+    async (page = 1, { force = false } = {}) => {
+      if (!storeId) return;
+
+      const normalizedSearch = debouncedSearch.trim();
+      const cacheKey = JSON.stringify({
+        storeId: String(storeId),
+        page,
+        category: String(activeCategory),
+        search: normalizedSearch.toLowerCase(),
+      });
+
+      if (!force && productCacheRef.current.has(cacheKey)) {
+        const cached = productCacheRef.current.get(cacheKey);
+        setProducts(cached.items);
+        setProductPageInfo(cached.pageInfo);
+
+        if (page !== cached.pageInfo.currentPage) {
+          setCurrentPage(cached.pageInfo.currentPage);
+        }
+        return;
+      }
+
+      setProductsLoading(true);
+      const requestId = ++productRequestIdRef.current;
+
+      try {
+        const params = {
+          store_id: Number(storeId),
+          per_page: PRODUCTS_PER_PAGE,
+          page,
+          is_active: true,
+        };
+
+        if (activeCategory !== 'all') {
+          params.category_id = Number(activeCategory);
+        }
+
+        if (normalizedSearch) {
+          params.search = normalizedSearch;
+        }
+
+        const response = await productService.list(params);
+
+        if (requestId !== productRequestIdRef.current) return;
+
+        // Unpack response objects assuming uniform controller output
+        const meta = response?.meta || response;
+        const items = extractList(response);
+
+        const nextPage = Number(meta?.current_page || page);
+
+        // 💡 Optimized Simple Paginator Checks:
+        // Reads has_more directly from backend meta or checks next_page_url text values
+        const hasNextPage = typeof meta?.has_more !== 'undefined'
+          ? Boolean(meta.has_more)
+          : Boolean(meta?.next_page_url);
+
+        const hasPrevPage = nextPage > 1;
+
+        // Safe bounds calculator without requiring database aggregators
+        const from = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + 1 : 0;
+        const to = items.length ? (nextPage - 1) * PRODUCTS_PER_PAGE + items.length : 0;
+
+        const pageInfo = {
+          currentPage: nextPage,
+          hasNextPage,
+          hasPrevPage,
+          from,
+          to,
+          total: null, // 💡 Hard-set to null to completely decouple UI from backend counter queries
+        };
+
+        productCacheRef.current.set(cacheKey, {
+          items,
+          pageInfo,
+        });
+
+        setProducts(items);
+        setProductPageInfo(pageInfo);
+
+        if (nextPage !== page) {
+          setCurrentPage(nextPage);
+        }
+      } catch (err) {
+        if (requestId !== productRequestIdRef.current) return;
+
+        setError(err?.response?.data?.message || err?.message || 'Failed to load products.');
+        setProducts([]);
+        setProductPageInfo({
+          currentPage: 1,
+          hasNextPage: false,
+          hasPrevPage: false,
+          from: 0,
+          to: 0,
+          total: null,
+        });
+      } finally {
+        if (requestId === productRequestIdRef.current) {
+          setProductsLoading(false);
+        }
+      }
+    },
+    [storeId, activeCategory, debouncedSearch]
+  );
 
   const loadDrafts = useCallback(
     async ({ silent = false } = {}) => {
@@ -771,6 +766,7 @@ const loadProducts = useCallback(
     return true;
   };
 
+
   const handleCharge = async () => {
     if (!billing?.billing_id || !billing?.items?.length) return;
     if (!validatePayment()) return;
@@ -1014,7 +1010,7 @@ const loadProducts = useCallback(
     <>
       <section className="pos-grid cashier-pos-page">
         <div className="pos-catalog stack-lg">
-          
+
           <div className="card hero-card compact-hero">
             <div className="store-header-layout">
               <div className="store-brand-identity">
@@ -1065,9 +1061,8 @@ const loadProducts = useCallback(
                 <button
                   key={category.category_id}
                   type="button"
-                  className={`chip ${
-                    String(activeCategory) === String(category.category_id) ? 'active' : ''
-                  }`}
+                  className={`chip ${String(activeCategory) === String(category.category_id) ? 'active' : ''
+                    }`}
                   onClick={() => setActiveCategory(category.category_id)}
                 >
                   {category.category_name}
@@ -1458,9 +1453,8 @@ const loadProducts = useCallback(
                     <button
                       key={method.key}
                       type="button"
-                      className={`payment-method-card ${
-                        paymentMethod === method.key ? 'active' : ''
-                      }`}
+                      className={`payment-method-card ${paymentMethod === method.key ? 'active' : ''
+                        }`}
                       onClick={() => handlePaymentMethodChange(method.key)}
                     >
                       <div className="payment-method-card-top">
@@ -1477,40 +1471,53 @@ const loadProducts = useCallback(
 
               {paymentMethod ? (
                 <div className="payment-fields-card">
-                  {paymentMethod === 'cash' ? (
-                    <div className="form-grid two-columns payment-fields-grid">
-                      <label>
-                        Cash received
-                        <input
-                          className="text-input"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={amountTendered}
-                          onChange={(e) => setAmountTendered(e.target.value)}
-                          placeholder="Cash tendered"
-                        />
-                      </label>
 
-                      <label>
-                        Amount to be paid
-                        <input
-                          className="text-input"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={amountReceived}
-                          onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Amount to be paid"
-                        />
-                      </label>
-                    </div>
-                  ) : null}
+{paymentMethod === 'cash' ? (
+  <div className="form-grid two-columns payment-fields-grid">
+    <label>
+      Amount to be paid
+      <input
+        className="text-input"
+        type="number"
+        min="0"
+        step="0.01"
+        value={amountReceived}
+        onChange={(e) => setAmountReceived(e.target.value)}
+        placeholder="Amount to be paid"
+      />
+    </label>
+    
+    <label>
+      Cash received
+      <input
+        className="text-input"
+        type="number"
+        min="0"
+        step="0.01"
+        value={amountTendered}
+        onChange={(e) => setAmountTendered(e.target.value)}
+        placeholder="Cash tendered"
+      />
+    </label>
+
+    <label>
+      Change
+      <input
+        className="text-input"
+        type="text"
+        value={balanceDue >= 0 ? balanceDue : '0.00'} 
+        readOnly
+        placeholder="0.00"
+        style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }} // Visual hint it's a calculated field
+      />
+    </label>
+  </div>
+) : null}
 
                   {paymentMethod === 'mpesa' ? (
                     <div className="form-grid two-columns payment-fields-grid">
                       <label>
-                        Amount to be paid
+                        Balance due
                         <input
                           className="text-input"
                           type="number"
@@ -1653,9 +1660,8 @@ const loadProducts = useCallback(
                 filteredDrafts.map((draft) => (
                   <div
                     key={draft.billing_id}
-                    className={`draft-modal-row ${
-                      String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
-                    }`}
+                    className={`draft-modal-row ${String(billing?.billing_id) === String(draft.billing_id) ? 'active' : ''
+                      }`}
                   >
                     <button
                       type="button"

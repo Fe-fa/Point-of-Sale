@@ -18,12 +18,17 @@ class ProductController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $paginator = $this->service->paginate(
+            $request->user(),
+            $request->only('store_id', 'search', 'category_id', 'is_active', 'per_page')
+        );
         return response()->json([
-            'message' => 'Products retrieved successfully.',
-            'data' => $this->service->paginate(
-                $request->user(),
-                $request->only('store_id', 'search', 'category_id', 'is_active', 'per_page')
-            ),
+            'message'       => 'Products retrieved successfully.',
+            'data'          => $paginator->items(), 
+            'current_page'  => $paginator->currentPage(),
+            'next_page_url' => $paginator->nextPageUrl(),
+            'prev_page_url' => $paginator->previousPageUrl(),
+            'per_page'      => $paginator->perPage(),
         ]);
     }
 

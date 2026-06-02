@@ -580,12 +580,16 @@ export default function AdminProductsPage() {
                   </select>
                 </label>
 
+
+                
+
                 <label>
                   SKU
                   <input
                     className="text-input"
                     placeholder="e.g. PROD-01"
                     value={form.sku}
+                    readOnly={editingId} // Prevent SKU changes when editing
                     onChange={(e) => setForm({ ...form, sku: e.target.value })}
                     required
                   />
@@ -638,6 +642,7 @@ export default function AdminProductsPage() {
                     min="0"
                     step="0.01"
                     value={form.vat_rate}
+                    readOnly={editingId} // Prevent VAT changes when editing to avoid complications — can be toggled on/off with apply_vat
                     disabled={!form.apply_vat}
                     onChange={(e) => setForm({ ...form, vat_rate: e.target.value })}
                     placeholder={form.apply_vat ? 'Enter VAT rate' : 'Enable VAT first'}

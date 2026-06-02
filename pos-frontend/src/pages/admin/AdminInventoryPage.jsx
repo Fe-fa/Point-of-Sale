@@ -79,9 +79,9 @@ export default function AdminInventoryPage() {
 
     try {
       const [inventoryRes, productsRes, historyRes] = await Promise.all([
-        inventoryService.list({ store_id: storeId, per_page:5 }),
+        inventoryService.list({ store_id: storeId, per_page:10 }),
         productService.list({ store_id: storeId, per_page:10 }),
-        inventoryService.history({ store_id: storeId, per_page:5 }),
+        inventoryService.history({ store_id: storeId, per_page:10 }),
       ]);
 
       setRows(extractList(inventoryRes));

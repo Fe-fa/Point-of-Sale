@@ -44,8 +44,8 @@ class ProductService
 
         $query = Product::query()
             ->with(['category'])
-            ->withCount('inventories')
-            ->withSum('inventories as total_stock', 'quantity')
+            // ->withCount('inventories')
+            // ->withSum('inventories as total_stock', 'quantity')
             ->orderByDesc('product_id');
 
         if (!$user->isAdmin()) {
@@ -70,12 +70,12 @@ class ProductService
             $query->where('category_id', (int) $filters['category_id']);
         }
 
-        if (array_key_exists('is_active', $filters) && $filters['is_active'] !== '') {
-            $query->where(
-                'is_active',
-                filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)
-            );
-        }
+if (array_key_exists('is_active', $filters) && $filters['is_active'] !== '') {
+    $query->where(
+        'is_active',
+        filter_var($filters['is_active'], FILTER_VALIDATE_BOOLEAN)
+    );
+}
 
         return $query->simplePaginate($perPage);
     }

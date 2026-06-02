@@ -38,11 +38,11 @@ class CategoryService
 
     public function paginate(User $user, array $filters = []): Paginator
     {
-        $perPage = (int) ($filters['per_page'] ?? 12);
+        $perPage = (int) ($filters['per_page'] ?? 24);
 
         $query = Category::query()
             ->withCount('products')
-            ->orderBy('category_name');
+            ->orderBy('categories.category_name');
 
         if (!$user->isAdmin()) {
             $query->whereIn('store_id', $this->allowedStoreIds($user));
@@ -50,12 +50,12 @@ class CategoryService
 
         if (!empty($filters['store_id'])) {
             $this->authorizeStoreAccess($user, $filters['store_id']);
-            $query->where('store_id', $filters['store_id']);
+            $query->where('categories.store_id', $filters['store_id']);
         }
         
         if (!empty($filters['search'])) {
             $search = trim($filters['search']);
-            $query->where('category_name', 'like', "%{$search}%");
+            $query->where('categories.category_name', 'like', "%{$search}%");
         }
 
         return $query->simplePaginate($perPage);

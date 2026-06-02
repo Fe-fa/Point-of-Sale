@@ -1509,18 +1509,6 @@ textarea:focus {
   color: #b02525;
 }
 
-.inventory-store-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 9px 12px;
-  border-radius: 999px;
-  border: 1px solid #dcdfe3;
-  background: #ffffff;
-  color: #5f666d;
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .stock-pill {
   display: inline-flex;
   align-items: center;
@@ -3273,6 +3261,325 @@ textarea:focus {
   }
 }
 
-
-
 }
+/* =========================================
+   CASHIER ROSTER CARD REDESIGN
+   ========================================= */
+
+.cashier-page {
+  display: grid;
+  gap: 22px;
+}
+
+.cashier-staff-search {
+  min-width: 300px;
+  max-width: 380px;
+}
+
+.cashier-sections {
+  display: grid;
+  gap: 28px;
+}
+
+.cashier-section {
+  display: grid;
+  gap: 14px;
+}
+
+.cashier-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cashier-section-head h3 {
+  margin: 0;
+  color: #2d241d;
+  font-size: 1.08rem;
+}
+
+.cashier-section-head p {
+  margin: 4px 0 0;
+  color: #8a7b6e;
+  font-size: 0.9rem;
+}
+
+.cashier-section-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #fbf5ee;
+  border: 1px solid #eadfd2;
+  color: #7b604a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cashier-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
+  gap: 18px;
+}
+
+.cashier-member-card {
+  background: #ffffff;
+  border: 1px solid #eadfd2;
+  border-radius: 24px;
+  padding: 22px;
+  box-shadow: 0 10px 24px rgba(63, 43, 24, 0.05);
+  display: grid;
+  gap: 18px;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.cashier-member-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(63, 43, 24, 0.08);
+  border-color: #e0d0c0;
+}
+
+.cashier-member-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cashier-member-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cashier-avatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #b75c1a 0%, #9b4307 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.cashier-member-meta {
+  min-width: 0;
+}
+
+.cashier-member-meta h4 {
+  margin: 0;
+  color: #2a211b;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.cashier-member-meta p {
+  margin: 5px 0 0;
+  color: #7d7065;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.cashier-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.cashier-status-pill.is-active {
+  color: #22814d;
+  background: #e4f6ea;
+  border-color: #ccead7;
+}
+
+.cashier-status-pill.is-inactive {
+  color: #a34d2d;
+  background: #fff1e8;
+  border-color: #f1d3c2;
+}
+
+.cashier-divider {
+  height: 1px;
+  background: #f2e8dd;
+}
+
+.cashier-member-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.cashier-sales-block {
+  display: grid;
+  gap: 4px;
+}
+
+.cashier-sales-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9a8c7e;
+}
+
+.cashier-sales-amount {
+  color: #2a1c14;
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 700;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.03em;
+}
+
+.cashier-view-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #ddd1c5;
+  color: #4a4138;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.cashier-view-btn:hover {
+  background: #fbf6f1;
+  border-color: #ccbcae;
+  transform: translateY(-1px);
+}
+
+.cashier-detail-modal {
+  border-radius: 22px;
+}
+
+.cashier-modal-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cashier-summary-card {
+  border-radius: 16px;
+  border: 1px solid #ecdfd2;
+  background: #fffdfa;
+  box-shadow: none;
+}
+
+.cashier-summary-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cashier-summary-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #f6ece3;
+  color: #9d4e14;
+  flex-shrink: 0;
+}
+
+.cashier-detail-panel {
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid #ecdfd2;
+  background: #fffdfa;
+  box-shadow: none;
+}
+
+.cashier-detail-panel strong {
+  color: #2d241d;
+  font-size: 0.96rem;
+  margin-bottom: 6px;
+  display: inline-block;
+}
+
+@media (max-width: 920px) {
+  .cashier-toolbar {
+    padding: 18px;
+  }
+
+  .cashier-toolbar-actions {
+    width: 100%;
+  }
+
+  .cashier-staff-search {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .cashier-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cashier-member-card {
+    padding: 18px;
+  }
+
+  .cashier-member-bottom {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cashier-view-btn {
+    width: 100%;
+  }
+
+  .cashier-sales-amount {
+    font-size: 1.75rem;
+  }
+
+  .cashier-modal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 540px) {
+  .cashier-member-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .cashier-member-left {
+    align-items: flex-start;
+  }
+
+  .cashier-status-pill {
+    width: fit-content;
+  }
+}
+

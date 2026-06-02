@@ -97,7 +97,7 @@ class BillingService
 
     public function paginate(User $user, array $filters = []): PaginatorContract
     {
-        $perPage = max(1, min((int) ($filters['per_page'] ?? 10), 100));
+        $perPage = max(1, min((int) ($filters['per_page'] ?? 20), 100));
 
         $query = Billing::query()
             ->with(['customer', 'store', 'user', 'payments'])

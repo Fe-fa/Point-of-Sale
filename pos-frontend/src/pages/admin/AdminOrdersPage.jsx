@@ -227,10 +227,6 @@ export default function AdminOrdersPage() {
       <div className="section-header" style={{ justifyContent: 'space-between', gap: 16 }}>
         <div>
           <h2>Orders</h2>
-          <p>
-            Operations and fulfillment view for warehouse or counter staff. Track physical items,
-            order routing, and fulfillment progress without exposing billing totals and balances.
-          </p>
         </div>
 
         <div className="row-actions compact" style={{ flexWrap: 'wrap' }}>

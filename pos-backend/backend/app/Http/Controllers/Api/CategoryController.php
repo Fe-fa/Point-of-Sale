@@ -15,17 +15,22 @@ class CategoryController extends Controller
     public function __construct(
         private readonly CategoryService $service
     ) {}
+public function index(Request $request): JsonResponse
+{
+    $paginator = $this->service->paginate(
+        $request->user(),
+        $request->only('store_id', 'search', 'per_page')
+    );
 
-    public function index(Request $request): JsonResponse
-    {
-        return response()->json([
-            'message' => 'Categories retrieved successfully.',
-            'data' => $this->service->paginate(
-                $request->user(),
-                $request->only('store_id', 'search', 'per_page')
-            ),
-        ]);
-    }
+    return response()->json([
+        'message' => 'Categories retrieved successfully.',
+        'data' => $paginator->items(), 
+        'current_page' => $paginator->currentPage(),
+        'next_page_url' => $paginator->nextPageUrl(),
+        'prev_page_url' => $paginator->previousPageUrl(),
+        'per_page' => $paginator->perPage(),
+    ]);
+}
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
