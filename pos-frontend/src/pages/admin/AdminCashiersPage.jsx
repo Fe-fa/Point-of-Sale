@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Search,
   Clock3,
   Store as StoreIcon,
   BadgeDollarSign,
@@ -58,7 +57,15 @@ const extractStoresForUser = (row) => {
 };
 
 const getShiftLabel = (row) => {
+  if (row?.shift?.label) return row.shift.label;
+  if (row?.shift_label) return row.shift_label;
+  if (row?.shift?.name && row?.shift?.start && row?.shift?.end) {
+    return `${row.shift.name} (${row.shift.start} - ${row.shift.end})`;
+  }
   if (row?.shift?.name) return row.shift.name;
+  if (row?.shift_name && row?.shift_start && row?.shift_end) {
+    return `${row.shift_name} (${row.shift_start} - ${row.shift_end})`;
+  }
   if (row?.shift_name) return row.shift_name;
   if (row?.shift) return titleCase(row.shift);
   if (row?.work_shift) return titleCase(row.work_shift);
@@ -66,15 +73,8 @@ const getShiftLabel = (row) => {
   return 'No shift assigned';
 };
 
-const getTodaySales = (row) =>
-  toNumber(
-    row?.sales_today ??
-      row?.today_sales ??
-      row?.today_sales_amount ??
-      row?.sales_amount ??
-      row?.sales_total ??
-      row?.todays_sales
-  );
+// Source of truth: backend sales_today
+const getTodaySales = (row) => toNumber(row?.sales_today ?? 0);
 
 const getCurrency = (row, activeStore) =>
   row?.currency || row?.default_currency || activeStore?.currency || 'KES';
@@ -174,7 +174,7 @@ function SummaryCard({ icon: Icon, label, value }) {
 
 export default function AdminCashiersPage() {
   const { user } = useAuth();
-  const { stores = [], activeStore, storeId, setStoreId } = useStore();
+  const { stores = [], activeStore, storeId } = useStore();
 
   const [rows, setRows] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -217,10 +217,6 @@ export default function AdminCashiersPage() {
 
   const { managers, cashiers } = useMemo(() => {
     const normalizedManagers = rows.filter((row) => row.roleKey === 'manager');
-
-    // If later you want ALL staff cards instead of only cashiers,
-    // replace the next line with:
-    // const normalizedCashiers = rows.filter((row) => row.roleKey !== 'admin');
     const normalizedCashiers = rows.filter((row) => row.roleKey === 'cashier');
 
     return { managers: normalizedManagers, cashiers: normalizedCashiers };
@@ -305,7 +301,6 @@ export default function AdminCashiersPage() {
   return (
     <section className="cashier-page">
       {state.error ? <p className="form-error">{state.error}</p> : null}
-
       {state.loading ? (
         <article className="card">
           <p className="muted">Loading cashier roster...</p>
@@ -353,7 +348,7 @@ export default function AdminCashiersPage() {
                       <div className="cashier-sales-block">
                         <span className="cashier-sales-label">Sales today</span>
                         <strong className="cashier-sales-amount">
-                          {formatMoney(member.salesToday, member.currency)}
+                          {formatMoney(member.salesToday, member.amount_received_currency)}
                         </strong>
                       </div>
 

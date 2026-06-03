@@ -91,7 +91,6 @@ export default function AdminLayout() {
       </aside>
 
       <section className="main-shell">
-        {/* The entire header element will only render if isDashboard is true */}
         {isDashboard && (
           <header className="topbar topbar-lumiere">
             <div>

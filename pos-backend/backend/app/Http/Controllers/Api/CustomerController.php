@@ -24,6 +24,7 @@ class CustomerController extends Controller
     private function authorizeStoreAccess($user, $storeId): void
     {
         if (!$storeId || $user->isAdmin()) {
+            
             return;
         }
 
@@ -41,7 +42,11 @@ class CustomerController extends Controller
         $user = $request->user();
         $perPage = max(1, min((int) $request->get('per_page', 20), 100));
 
+        // Dynamically compute the cumulative balance from unpaid bills instead of using a static column
         $q = Customer::query()
+            ->withSum(['billings as dynamic_balance' => function ($query) {
+                $query->where('status', '!=', 'paid');
+            }], 'balance_due')
             ->orderByDesc('customer_id');
 
         if (!$user->isAdmin()) {
@@ -62,9 +67,18 @@ class CustomerController extends Controller
             });
         }
 
+        // Map through data to format our newly computed balance property cleanly
+        $paginated = $q->simplePaginate($perPage)->withQueryString();
+        
+        $paginated->getCollection()->transform(function (Customer $customer) {
+            $customer->current_balance = round((float) ($customer->dynamic_balance ?? 0.00), 2);
+            unset($customer->dynamic_balance);
+            return $customer;
+        });
+
         return response()->json([
             'message' => 'Customers retrieved successfully.',
-            'data' => $q->simplePaginate($perPage)->withQueryString(),
+            'data' => $paginated,
         ]);
     }
 
@@ -73,6 +87,7 @@ class CustomerController extends Controller
         $this->authorizeStoreAccess($request->user(), $request->validated('store_id'));
 
         $customer = Customer::create($request->validated());
+        $customer->current_balance = 0.00;
 
         return response()->json([
             'message' => 'Customer created successfully.',
@@ -84,9 +99,19 @@ class CustomerController extends Controller
     {
         $this->authorizeStoreAccess(request()->user(), $customer->store_id);
 
+        // Load dynamic balance metrics alongside relations count matching current balances
+        $customer->loadSum(['billings as dynamic_balance' => function ($query) {
+            $query->where('status', '!=', 'paid');
+        }], 'balance_due');
+
+        $customer->loadCount('billings');
+        
+        $customer->current_balance = round((float) ($customer->dynamic_balance ?? 0.00), 2);
+        unset($customer->dynamic_balance);
+
         return response()->json([
             'message' => 'Customer retrieved successfully.',
-            'data' => $customer->loadCount('billings'),
+            'data' => $customer,
         ]);
     }
 
@@ -97,9 +122,18 @@ class CustomerController extends Controller
 
         $customer->update($request->validated());
 
+        $updatedCustomer = $customer->fresh();
+        
+        $updatedCustomer->loadSum(['billings as dynamic_balance' => function ($query) {
+            $query->where('status', '!=', 'paid');
+        }], 'balance_due');
+
+        $updatedCustomer->current_balance = round((float) ($updatedCustomer->dynamic_balance ?? 0.00), 2);
+        unset($updatedCustomer->dynamic_balance);
+
         return response()->json([
             'message' => 'Customer updated successfully.',
-            'data' => $customer->fresh(),
+            'data' => $updatedCustomer,
         ]);
     }
 

@@ -1,9 +1,10 @@
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Edit, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { categoryService } from '../../services/categoryService';
 import { productService } from '../../services/productService';
 import { currency } from '../../utils/helpers';
 import { useStore } from '../../contexts/StoreContext';
+
 const IMAGE_BASE_URL =
   import.meta.env.VITE_STORAGE_URL ||
   `${import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'}/storage/`;
@@ -476,22 +477,27 @@ export default function AdminProductsPage() {
                         </td>
 
                         <td>
-                          <div className="row-actions compact">
-                            <button
-                              type="button"
-                              className="ghost-button"
-                              onClick={() => handleEdit(product)}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost-button danger"
-                              onClick={() => handleDelete(product.product_uuid)}
-                            >
-                              Delete
-                            </button>
-                          </div>
+<div className="row-actions compact">
+  {/* Edit Button */}
+  <button
+    type="button"
+    className="ghost-button"
+    onClick={() => handleEdit(product)}
+    title="Edit"
+  >
+    <Edit size={16} />
+  </button>
+
+  {/* Delete Button */}
+  <button
+    type="button"
+    className="ghost-button danger"
+    onClick={() => handleDelete(product.product_uuid)}
+    title="Delete"
+  >
+    <Trash2 size={16} />
+  </button>
+</div>
                         </td>
                       </tr>
                     );

@@ -15,22 +15,41 @@ class CategoryController extends Controller
     public function __construct(
         private readonly CategoryService $service
     ) {}
-public function index(Request $request): JsonResponse
-{
-    $paginator = $this->service->paginate(
-        $request->user(),
-        $request->only('store_id', 'search', 'per_page')
-    );
 
-    return response()->json([
-        'message' => 'Categories retrieved successfully.',
-        'data' => $paginator->items(), 
-        'current_page' => $paginator->currentPage(),
-        'next_page_url' => $paginator->nextPageUrl(),
-        'prev_page_url' => $paginator->previousPageUrl(),
-        'per_page' => $paginator->perPage(),
-    ]);
-}
+    public function index(Request $request): JsonResponse
+    {
+        $perPage = (int) ($request->per_page ?? 12);
+        $user = $request->user();
+
+        $query = Category::query()
+            ->withCount('products');
+
+        if (!$user->isAdmin()) {
+            $query->whereIn('categories.store_id', $this->service->allowedStoreIds($user));
+        }
+
+        $query->when($request->store_id, function ($q, $storeId) use ($user) {
+                $this->service->authorizeStoreAccess($user, $storeId);
+                $q->where('categories.store_id', $storeId);
+            })
+            ->when($request->search, function ($q, $search) {
+                $search = trim($search);
+                $q->where('categories.category_name', 'like', "%{$search}%");
+            })
+            ->orderBy('categories.category_name'); 
+
+        $categories = $query->paginate($perPage);
+
+        return response()->json([
+            'data' => $categories->items(),
+            'meta' => [
+                'current_page' => $categories->currentPage(),
+                'last_page'    => $categories->lastPage(),
+                'per_page'     => $categories->perPage(),
+                'total'        => $categories->total(),
+            ],
+        ]);
+    }
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
