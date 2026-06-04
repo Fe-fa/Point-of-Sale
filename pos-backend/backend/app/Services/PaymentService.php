@@ -77,13 +77,14 @@ class PaymentService
                 abort(response()->json(['message' => 'This customer has no outstanding balances due.'], 422));
             }
 
-            // 3. Track cash distribution variables
-            $moneyLeftToAllocate = $rawTendered;
-            $globalChangeReturned = 0.00;
+// 3. Track cash distribution variables
+$moneyLeftToAllocate = $rawTendered;
+$globalChangeReturned = 0.00;
 
-            if ($method === 'cash' && $rawTendered > $totalCombinedBalance) {
-                $globalChangeReturned = round($rawTendered - $totalCombinedBalance, 2);
-            }
+// Change is now strictly calculated from: Tendered - (Current Invoice + Outstanding Customer Balances)
+if ($method === 'cash' && $rawTendered > $totalCombinedBalance) {
+    $globalChangeReturned = round($rawTendered - $totalCombinedBalance, 2);
+}
 
             $sortedBillings = $allCustomerBillings->sortBy('created_at');
             $primaryPaymentRecord = null;

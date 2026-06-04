@@ -191,7 +191,7 @@ export default function AdminCashiersPage() {
     setState({ loading: true, error: '' });
 
     try {
-      const params = { per_page: 100 };
+      const params = { per_page: 10 };
       if (scopedStoreId) params.store_id = scopedStoreId;
 
       const response = await userService.list(params);

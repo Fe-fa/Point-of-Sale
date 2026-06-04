@@ -24,7 +24,6 @@ class CustomerController extends Controller
     private function authorizeStoreAccess($user, $storeId): void
     {
         if (!$storeId || $user->isAdmin()) {
-            
             return;
         }
 
@@ -40,45 +39,52 @@ class CustomerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $perPage = max(1, min((int) $request->get('per_page', 20), 100));
+        $perPage = max(1, min((int) $request->get('per_page', 10), 100));
 
-        // Dynamically compute the cumulative balance from unpaid bills instead of using a static column
-        $q = Customer::query()
-            ->withSum(['billings as dynamic_balance' => function ($query) {
-                $query->where('status', '!=', 'paid');
-            }], 'balance_due')
-            ->orderByDesc('customer_id');
+        // Dynamically compute the cumulative balance from unpaid bills
+        $query = Customer::query()
+            ->withSum(['billings as dynamic_balance' => function ($subQuery) {
+                $subQuery->where('status', '!=', 'paid');
+            }], 'balance_due');
 
         if (!$user->isAdmin()) {
-            $q->whereIn('store_id', $this->allowedStoreIds($user));
+            $query->whereIn('store_id', $this->allowedStoreIds($user));
         }
 
         if ($request->filled('store_id')) {
             $this->authorizeStoreAccess($user, $request->store_id);
-            $q->where('store_id', $request->store_id);
+            $query->where('store_id', $request->store_id);
         }
 
-        if ($request->filled('search')) {
-            $s = trim((string) $request->search);
+        // Search modifier mapping
+        $query->when($request->search, function ($q, $search) {
+            $s = trim((string) $search);
             $q->where(function ($w) use ($s) {
                 $w->where('full_name', 'like', "%{$s}%")
                     ->orWhere('phone', 'like', "%{$s}%")
                     ->orWhere('email', 'like', "%{$s}%");
             });
-        }
+        });
 
-        // Map through data to format our newly computed balance property cleanly
-        $paginated = $q->simplePaginate($perPage)->withQueryString();
-        
-        $paginated->getCollection()->transform(function (Customer $customer) {
+        $query->orderByDesc('customer_id');
+
+        $customers = $query->paginate($perPage);
+
+        // Format computed properties over items collection loop directly
+        $formattedItems = collect($customers->items())->map(function (Customer $customer) {
             $customer->current_balance = round((float) ($customer->dynamic_balance ?? 0.00), 2);
             unset($customer->dynamic_balance);
             return $customer;
         });
 
         return response()->json([
-            'message' => 'Customers retrieved successfully.',
-            'data' => $paginated,
+            'data' => $formattedItems,
+            'meta' => [
+                'current_page' => $customers->currentPage(),
+                'last_page'    => $customers->lastPage(),
+                'per_page'     => $customers->perPage(),
+                'total'        => $customers->total(),
+            ],
         ]);
     }
 

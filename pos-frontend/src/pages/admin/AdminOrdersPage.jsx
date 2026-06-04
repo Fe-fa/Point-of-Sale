@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Modal from '../../components/common/Modal';
 import { useStore } from '../../contexts/StoreContext';
 import { billingService } from '../../services/billingService';
@@ -7,9 +7,9 @@ import { formatDateTime } from '../../utils/helpers';
 const emptyPagination = {
   data: [],
   current_page: 1,
+  last_page: 1,
   per_page: 10,
-  prev_page_url: null,
-  next_page_url: null,
+  total: 0,
   from: null,
   to: null,
 };
@@ -18,20 +18,41 @@ const extractPagination = (response) => {
   const payload = response?.data ?? response ?? {};
 
   if (Array.isArray(payload?.data)) {
-    return { ...emptyPagination, ...payload, data: payload.data };
+    const meta = payload?.meta ?? {};
+    const currentPage = Number(meta.current_page ?? 1);
+    const perPage = Number(meta.per_page ?? payload.data.length ?? 10);
+    const total = Number(meta.total ?? payload.data.length ?? 0);
+    const lastPage =
+      Number(meta.last_page ?? Math.max(1, Math.ceil(total / Math.max(perPage, 1)))) || 1;
+
+    return {
+      data: payload.data,
+      current_page: currentPage,
+      last_page: lastPage,
+      per_page: perPage,
+      total,
+      from: total ? (currentPage - 1) * perPage + 1 : null,
+      to: total ? Math.min(currentPage * perPage, total) : null,
+    };
   }
 
   if (Array.isArray(payload)) {
     return {
-      ...emptyPagination,
       data: payload,
+      current_page: 1,
+      last_page: 1,
       per_page: payload.length,
+      total: payload.length,
       from: payload.length ? 1 : null,
       to: payload.length || null,
     };
   }
 
   return emptyPagination;
+};
+
+const extractRecord = (response) => {
+  return response?.data?.data || response?.data || response || null;
 };
 
 const fulfillmentStatusOptions = [
@@ -107,59 +128,72 @@ export default function AdminOrdersPage() {
   const [success, setSuccess] = useState('');
   const [savingFulfillment, setSavingFulfillment] = useState(false);
 
-  const loadOrders = async () => {
-    if (!storeId) {
-      setOrders([]);
-      setPagination(emptyPagination);
-      setLoading(false);
-      return;
-    }
+  const requestRef = useRef(0);
 
-    setLoading(true);
-    setError('');
-
-    try {
-      const params = {
-        page,
-        per_page: 10,
-        store_id: storeId,
-      };
-
-      if (fulfillmentStatus) {
-        params.fulfillment_status = fulfillmentStatus;
+  const loadOrders = useCallback(
+    async (targetPage = page) => {
+      if (!storeId) {
+        setOrders([]);
+        setPagination(emptyPagination);
+        setLoading(false);
+        return;
       }
 
-      if (fulfillmentType) {
-        params.fulfillment_type = fulfillmentType;
+      const requestId = ++requestRef.current;
+      setLoading(true);
+      setError('');
+
+      try {
+        const params = {
+          page: targetPage,
+          per_page: 10,
+          store_id: storeId,
+        };
+
+        if (fulfillmentStatus) {
+          params.fulfillment_status = fulfillmentStatus;
+        }
+
+        if (fulfillmentType) {
+          params.fulfillment_type = fulfillmentType;
+        }
+
+        const response = await billingService.list(params);
+
+        if (requestId !== requestRef.current) return;
+
+        const parsed = extractPagination(response);
+        setPagination(parsed);
+        setOrders(parsed.data || []);
+      } catch (err) {
+        if (requestId !== requestRef.current) return;
+
+        setError(err?.response?.data?.message || 'Unable to load orders.');
+        setOrders([]);
+        setPagination(emptyPagination);
+      } finally {
+        if (requestId === requestRef.current) {
+          setLoading(false);
+        }
       }
-
-      const response = await billingService.list(params);
-      const parsed = extractPagination(response);
-
-      setPagination(parsed);
-      setOrders(parsed.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Unable to load orders.');
-      setOrders([]);
-      setPagination(emptyPagination);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [page, fulfillmentStatus, fulfillmentType, storeId]
+  );
 
   useEffect(() => {
-    setOrders([]);
     setSelectedOrder(null);
     setError('');
     setSuccess('');
 
     if (!storeId) {
+      setOrders([]);
+      setPagination(emptyPagination);
       setLoading(false);
       return;
     }
 
-    loadOrders();
-  }, [storeId, page, fulfillmentStatus, fulfillmentType]);
+    loadOrders(page);
+  }, [storeId, page, fulfillmentStatus, fulfillmentType, loadOrders]);
 
   useEffect(() => {
     if (!success) return;
@@ -176,7 +210,7 @@ export default function AdminOrdersPage() {
 
     try {
       const response = await billingService.show(billingId);
-      setSelectedOrder(response?.data || response || null);
+      setSelectedOrder(extractRecord(response));
     } catch (err) {
       setError(err?.response?.data?.message || 'Unable to load order detail.');
     }
@@ -199,7 +233,7 @@ export default function AdminOrdersPage() {
         fulfillment_type: selectedOrder.fulfillment_type || 'walk_in_counter',
       });
 
-      const updatedOrder = response?.data || response;
+      const updatedOrder = extractRecord(response);
 
       setSelectedOrder((prev) => ({
         ...prev,
@@ -272,8 +306,9 @@ export default function AdminOrdersPage() {
             <h3>Order records</h3>
             <p>
               {pagination.from && pagination.to
-                ? `Showing ${pagination.from}-${pagination.to}`
+                ? `Showing ${pagination.from}-${pagination.to} of ${pagination.total}`
                 : `${orders.length} items`}
+              {loading && orders.length ? ' • refreshing...' : ''}
             </p>
           </div>
         </div>
@@ -300,7 +335,7 @@ export default function AdminOrdersPage() {
                 <tr>
                   <td colSpan="7">Select a store first.</td>
                 </tr>
-              ) : loading ? (
+              ) : loading && !orders.length ? (
                 <tr>
                   <td colSpan="7">Loading...</td>
                 </tr>
@@ -340,14 +375,16 @@ export default function AdminOrdersPage() {
             className="row-actions"
             style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
           >
-            <span className="muted">Page {pagination.current_page || page}</span>
+            <span className="muted">
+              Page {pagination.current_page} of {pagination.last_page}
+            </span>
 
             <div className="row-actions compact">
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-                disabled={!pagination.prev_page_url || loading}
+                onClick={() => setPage(Math.max(pagination.current_page - 1, 1))}
+                disabled={loading || pagination.current_page <= 1}
               >
                 Previous
               </button>
@@ -355,8 +392,8 @@ export default function AdminOrdersPage() {
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => setPage((prev) => prev + 1)}
-                disabled={!pagination.next_page_url || loading}
+                onClick={() => setPage(Math.min(pagination.current_page + 1, pagination.last_page))}
+                disabled={loading || pagination.current_page >= pagination.last_page}
               >
                 Next
               </button>

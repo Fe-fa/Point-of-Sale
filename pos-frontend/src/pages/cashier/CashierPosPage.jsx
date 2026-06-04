@@ -23,7 +23,7 @@ import { currency, formatDateTime } from '../../utils/helpers';
 import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
 import { mergeStoreSettings } from '../../utils/storeSettings';
 
-const PRODUCTS_PER_PAGE = 8;
+const PRODUCTS_PER_PAGE = 12;
 const SEARCH_DEBOUNCE_MS = 300;
 const PRODUCT_CACHE_TTL_MS = 60_000; // 1-minute soft cache
 
@@ -217,8 +217,8 @@ export default function CashierPosPage() {
     try {
       // ✅ PARALLEL fetch instead of sequential → ~2x faster
       const [categoriesRes, customersRes] = await Promise.all([
-        categoryService.list({ store_id: Number(storeId), per_page: 100 }),
-        customerService.list({ store_id: Number(storeId), per_page: 100 }),
+        categoryService.list({ store_id: Number(storeId), per_page: 10 }),
+        customerService.list({ store_id: Number(storeId), per_page: 10 }),
       ]);
 
       setCategories(extractList(categoriesRes));
@@ -369,7 +369,7 @@ export default function CashierPosPage() {
         );
 
         const response = await Promise.race([
-          billingService.list({ store_id: Number(storeId), per_page: 25, is_draft: true }),
+          billingService.list({ store_id: Number(storeId), per_page: 12, is_draft: true }),
           timeoutPromise,
         ]);
 
@@ -1190,147 +1190,264 @@ export default function CashierPosPage() {
         </aside>
       </section>
 
-      {/* === PAYMENT MODAL (unchanged) === */}
-      {showPaymentModal ? (
-        <div className="modal-backdrop" onClick={() => !submitting && setShowPaymentModal(false)}>
-          <div className="modal-card payment-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3>Payment</h3>
-                <p className="muted">{billing?.invnumber || `Draft #${billing?.billing_id || ''}`}</p>
-              </div>
-              <button type="button" className="icon-button" onClick={() => setShowPaymentModal(false)} disabled={submitting}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-content payment-modal-content">
-              <div className="payment-summary-strip">
-                <div className="payment-summary-pill">
-                  <span>Total due</span>
-                  <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
-                </div>
-                <div className="payment-summary-pill">
-                  <span>Items</span>
-                  <strong>{itemCount}</strong>
-                </div>
-                {selectedCustomerId ? (
-                  <div className="payment-summary-pill">
-                    <span>Customer</span>
-                    <strong>{selectedCustomer?.full_name || 'Selected'}</strong>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="payment-method-card-grid">
-                {paymentMethods.map((method) => {
-                  const Icon = method.icon;
-                  return (
-                    <button
-                      key={method.key}
-                      type="button"
-                      className={`payment-method-card ${paymentMethod === method.key ? 'active' : ''}`}
-                      onClick={() => handlePaymentMethodChange(method.key)}
-                    >
-                      <div className="payment-method-card-top">
-                        <span className="payment-method-icon"><Icon size={18} /></span>
-                        <strong>{method.title}</strong>
-                      </div>
-                      <p>{method.description}</p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {paymentMethod ? (
-                <div className="payment-fields-card">
-                  {paymentMethod === 'cash' ? (
-                    <div className="form-grid two-columns payment-fields-grid">
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span>
-                          Amount to be paid
-                          {selectedCustomer && customerCurrentBalance > 0 && (
-                            <span style={{ color: '#2563eb', fontWeight: 'bold', marginLeft: '6px' }}>
-                              ({`+${invoiceTotal.toFixed(2)} / +${customerCurrentBalance.toFixed(2)}`})
-                            </span>
-                          )}
-                        </span>
-                        <input className="text-input" type="number" min="0" step="0.01"
-                          value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Amount to be paid" />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span>Cash received</span>
-                        <input className="text-input" type="number" min="0" step="0.01"
-                          value={amountTendered} onChange={(e) => setAmountTendered(e.target.value)}
-                          placeholder="Cash tendered" />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span>Change</span>
-                        <input className="text-input" type="text"
-                          value={Number(balanceDue) >= 0 ? balanceDue : '0.00'}
-                          readOnly placeholder="0.00"
-                          style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }} />
-                      </label>
-                    </div>
-                  ) : null}
-
-                  {paymentMethod === 'mpesa' ? (
-                    <div className="form-grid two-columns payment-fields-grid">
-                      <label>Balance due
-                        <input className="text-input" type="number" min="0" step="0.01"
-                          value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Amount to be paid" />
-                      </label>
-                      <label>MPESA phone number
-                        <input className="text-input" type="text" value={mpesaPhone}
-                          onChange={(e) => setMpesaPhone(e.target.value)} placeholder="e.g. 07XXXXXXXX" />
-                      </label>
-                      <label className="span-2">MPESA transaction code
-                        <input className="text-input" type="text" value={mpesaCode}
-                          onChange={(e) => setMpesaCode(e.target.value)} placeholder="Enter transaction code" />
-                      </label>
-                    </div>
-                  ) : null}
-
-                  {paymentMethod === 'card' ? (
-                    <div className="form-grid two-columns payment-fields-grid">
-                      <label>Paid amount
-                        <input className="text-input" type="number" min="0" step="0.01"
-                          value={amountReceived} onChange={(e) => setAmountReceived(e.target.value)}
-                          placeholder="Paid amount" />
-                      </label>
-                      <label>Card holder
-                        <input className="text-input" type="text" value={cardHolder}
-                          onChange={(e) => setCardHolder(e.target.value)} placeholder="Card holder name" />
-                      </label>
-                      <label className="span-2">Card reference
-                        <input className="text-input" type="text" value={cardReference}
-                          onChange={(e) => setCardReference(e.target.value)} placeholder="POS slip or card reference" />
-                      </label>
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <div className="payment-empty-state">
-                  <p>Select a payment method to show the required fields.</p>
-                </div>
-              )}
-
-              <div className="payment-modal-actions">
-                <button type="button" className="primary-button" onClick={handleCharge}
-                  disabled={!billing?.items?.length || submitting || !paymentMethod}>
-                  Charge Payment
-                </button>
-                <button type="button" className="ghost-button" onClick={() => setShowPaymentModal(false)} disabled={submitting}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
+{/* === PAYMENT MODAL (unchanged) === */}
+{showPaymentModal ? (
+  <div className="modal-backdrop" onClick={() => !submitting && setShowPaymentModal(false)}>
+    <div className="modal-card payment-modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-header">
+        <div>
+          <h3>Payment</h3>
+          <p className="muted">{billing?.invnumber || `Draft #${billing?.billing_id || ''}`}</p>
         </div>
-      ) : null}
+        <button type="button" className="icon-button" onClick={() => setShowPaymentModal(false)} disabled={submitting}>
+          <X size={18} />
+        </button>
+      </div>
 
+      <div className="modal-content payment-modal-content">
+        <div className="payment-summary-strip">
+          <div className="payment-summary-pill">
+            <span>Total due</span>
+            <strong>{currency(billing?.total || 0, currentStore?.currency)}</strong>
+          </div>
+          <div className="payment-summary-pill">
+            <span>Items</span>
+            <strong>{itemCount}</strong>
+          </div>
+          {selectedCustomerId ? (
+            <div className="payment-summary-pill">
+              <span>Customer</span>
+              <strong>{selectedCustomer?.full_name || 'Selected'}</strong>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="payment-method-card-grid">
+          {paymentMethods.map((method) => {
+            const Icon = method.icon;
+            return (
+              <button
+                key={method.key}
+                type="button"
+                className={`payment-method-card ${paymentMethod === method.key ? 'active' : ''}`}
+                onClick={() => handlePaymentMethodChange(method.key)}
+              >
+                <div className="payment-method-card-top">
+                  <span className="payment-method-icon"><Icon size={18} /></span>
+                  <strong>{method.title}</strong>
+                </div>
+                <p>{method.description}</p>
+              </button>
+            );
+          })}
+        </div>
+
+        {paymentMethod ? (
+          <div className="payment-fields-card">
+          
+{paymentMethod === 'cash' ? (
+  <div className="form-grid two-columns payment-fields-grid">
+<label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+  <span>
+    Amount to be paid
+    {/* Clean, strict fallback checking the live object properties of whichever customer is active */}
+    {selectedCustomer && (
+      (() => {
+        const activeBalance = Number(
+          billing?.customer?.current_balance ?? 
+          selectedCustomer?.current_balance ?? 
+          customerCurrentBalance ?? 
+          0
+        );
+        return activeBalance > 0 ? (
+          <span style={{ color: '#2563eb', fontWeight: 'bold', marginLeft: '6px' }}>
+            ({`+${activeBalance.toFixed(2)}`})
+          </span>
+        ) : null;
+      })()
+    )}
+  </span>
+  <input 
+    className="text-input" 
+    type="number" 
+    min="0" 
+    step="0.01"
+    value={amountReceived} 
+    onChange={(e) => setAmountReceived(e.target.value)}
+    placeholder="Amount to be paid" 
+  />
+</label>
+
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>Cash received</span>
+      <input 
+        className="text-input" 
+        type="number" 
+        min="0" 
+        step="0.01"
+        value={amountTendered} 
+        onChange={(e) => setAmountTendered(e.target.value)}
+        placeholder="Cash tendered" 
+      />
+    </label>
+
+<label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+  <span>Change</span>
+  <input 
+    className="text-input" 
+    type="text"
+    value={(() => {
+      const cashTendered = Number(amountTendered || 0);
+      const currentInvoiceCost = Number(amountReceived || billing?.total || 0);
+      
+      // Pulls dynamically using the same safe fallback chain as your label banner
+      const legacyDebt = selectedCustomer 
+        ? Number(
+            billing?.customer?.current_balance ?? 
+            selectedCustomer?.current_balance ?? 
+            customerCurrentBalance ?? 
+            0
+          )
+        : 0;
+      
+      // Total amount the customer needs to clear (Current Invoice Amount + Outstanding Debt)
+      const totalTargetDebt = currentInvoiceCost + legacyDebt;
+      
+      // Calculate change cleanly
+      const realChange = cashTendered - totalTargetDebt;
+      return realChange > 0 ? realChange.toFixed(2) : '0.00';
+    })()}
+    readOnly 
+    placeholder="0.00"
+    style={{ fontWeight: 'bold', backgroundColor: '#f5f5f5' }} 
+  />
+</label>
+  </div>
+) : null}
+{paymentMethod === 'mpesa' ? (
+  <div className="form-grid two-columns payment-fields-grid">
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>
+        Amount to be paid
+        {selectedCustomer && (
+          (() => {
+            const activeBalance = Number(
+              billing?.customer?.current_balance ?? 
+              selectedCustomer?.current_balance ?? 
+              customerCurrentBalance ?? 
+              0
+            );
+            
+            return activeBalance > 0 ? (
+              <span style={{ color: '#2563eb', fontWeight: 'bold', marginLeft: '6px' }}>
+                ({`+${activeBalance.toFixed(2)}`})
+              </span>
+            ) : null;
+          })()
+        )}
+      </span>
+      <input 
+        className="text-input" 
+        type="number" 
+        min="0" 
+        step="0.01"
+        value={(() => {
+          // If a customer is selected, default to Invoice Total + Legacy Debt
+          const currentInvoiceCost = Number(billing?.total || 0);
+          const legacyDebt = selectedCustomer 
+            ? Number(billing?.customer?.current_balance ?? selectedCustomer?.current_balance ?? customerCurrentBalance ?? 0)
+            : 0;
+          
+          return amountReceived || (currentInvoiceCost + legacyDebt).toFixed(2);
+        })()} 
+        onChange={(e) => setAmountReceived(e.target.value)}
+        placeholder="Amount to be paid" 
+      />
+    </label>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>MPESA phone number</span>
+      <input className="text-input" type="text" value={mpesaPhone}
+        onChange={(e) => setMpesaPhone(e.target.value)} placeholder="e.g. 07XXXXXXXX" />
+    </label>
+    <label className="span-2" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>MPESA transaction code</span>
+      <input className="text-input" type="text" value={mpesaCode}
+        onChange={(e) => setMpesaCode(e.target.value)} placeholder="Enter transaction code" />
+    </label>
+  </div>
+) : null}
+
+{paymentMethod === 'card' ? (
+  <div className="form-grid two-columns payment-fields-grid">
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>
+        Amount to be paid
+        {selectedCustomer && (
+          (() => {
+            const activeBalance = Number(
+              billing?.customer?.current_balance ?? 
+              selectedCustomer?.current_balance ?? 
+              customerCurrentBalance ?? 
+              0
+            );
+            
+            return activeBalance > 0 ? (
+              <span style={{ color: '#2563eb', fontWeight: 'bold', marginLeft: '6px' }}>
+                ({`+${activeBalance.toFixed(2)}`})
+              </span>
+            ) : null;
+          })()
+        )}
+      </span>
+      <input 
+        className="text-input" 
+        type="number" 
+        min="0" 
+        step="0.01"
+        value={(() => {
+          const currentInvoiceCost = Number(billing?.total || 0);
+          const legacyDebt = selectedCustomer 
+            ? Number(billing?.customer?.current_balance ?? selectedCustomer?.current_balance ?? customerCurrentBalance ?? 0)
+            : 0;
+          
+          return amountReceived || (currentInvoiceCost + legacyDebt).toFixed(2);
+        })()} 
+        onChange={(e) => setAmountReceived(e.target.value)}
+        placeholder="Paid amount" 
+      />
+    </label>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>Card holder</span>
+      <input className="text-input" type="text" value={cardHolder}
+        onChange={(e) => setCardHolder(e.target.value)} placeholder="Card holder name" />
+    </label>
+    <label className="span-2" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <span>Card reference</span>
+      <input className="text-input" type="text" value={cardReference}
+        onChange={(e) => setCardReference(e.target.value)} placeholder="POS slip or card reference" />
+    </label>
+  </div>
+) : null}
+          </div>
+        ) : (
+          <div className="payment-empty-state">
+            <p>Select a payment method to show the required fields.</p>
+          </div>
+        )}
+
+        <div className="payment-modal-actions">
+          <button type="button" className="primary-button" onClick={handleCharge}
+            disabled={!billing?.items?.length || submitting || !paymentMethod}>
+            Charge Payment
+          </button>
+          <button type="button" className="ghost-button" onClick={() => setShowPaymentModal(false)} disabled={submitting}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+) : null}
       {/* === DRAFT MODAL (unchanged) === */}
       {showDraftModal ? (
         <div className="modal-backdrop" onClick={() => setShowDraftModal(false)}>
@@ -1344,10 +1461,9 @@ export default function CashierPosPage() {
                 <X size={18} />
               </button>
             </div>
-
             <div className="toolbar-row pos-toolbar-wrap" style={{ marginBottom: 12 }}>
               <div className="search-shell">
-                <Search size={16} />
+                <Search className="search-icon-pos" size={16} />
                 <input value={draftSearch} onChange={(e) => setDraftSearch(e.target.value)}
                   placeholder="Search drafts by invoice, customer, phone, email or note" />
               </div>

@@ -94,7 +94,7 @@ export default function AdminUsersPage() {
     setError('');
 
     try {
-      const params = { per_page: 100 };
+      const params = { per_page: 10 };
 
       if (roleFilter !== 'all') params.role = roleFilter;
       if (assignmentFilter !== 'all') params.assigned = assignmentFilter;
