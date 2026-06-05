@@ -477,27 +477,27 @@ export default function AdminProductsPage() {
                         </td>
 
                         <td>
-<div className="row-actions compact">
-  {/* Edit Button */}
-  <button
-    type="button"
-    className="ghost-button"
-    onClick={() => handleEdit(product)}
-    title="Edit"
-  >
-    <Edit size={16} />
-  </button>
+                          <div className="row-actions compact">
+                            {/* Edit Button */}
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => handleEdit(product)}
+                              title="Edit"
+                            >
+                              <Edit size={16} />
+                            </button>
 
-  {/* Delete Button */}
-  <button
-    type="button"
-    className="ghost-button danger"
-    onClick={() => handleDelete(product.product_uuid)}
-    title="Delete"
-  >
-    <Trash2 size={16} />
-  </button>
-</div>
+                            {/* Delete Button */}
+                            <button
+                              type="button"
+                              className="ghost-button danger"
+                              onClick={() => handleDelete(product.product_uuid)}
+                              title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -587,7 +587,7 @@ export default function AdminProductsPage() {
                 </label>
 
 
-                
+
 
                 <label>
                   SKU

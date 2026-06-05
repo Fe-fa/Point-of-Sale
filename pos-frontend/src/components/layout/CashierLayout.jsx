@@ -59,14 +59,14 @@ export default function CashierLayout() {
           <button type="button" className="icon-button" onClick={toggleTheme} aria-label="Toggle Theme">
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
-          <div className="cashier-user" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <UserCircle2 size={25} />
-            <span>{user?.full_name || 'Employee'}</span>
-          </div>
 
           <button type="button" className="icon-button" aria-label="Notifications">
             <Bell size={18} />
           </button>
+          <div className="cashier-user" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <UserCircle2 size={25} />
+            <span>{user?.full_name || 'Employee'}</span>
+          </div>
         </div>
         <button type="button" className="ghost-button" onClick={handleLogout}>
           <LogOut size={15} />

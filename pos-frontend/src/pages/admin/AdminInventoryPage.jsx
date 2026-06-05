@@ -4,6 +4,8 @@ import { inventoryService } from '../../services/inventoryService';
 import { productService } from '../../services/productService';
 import { useStore } from '../../contexts/StoreContext';
 
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100];
+
 const initialForm = {
   product_id: '',
   batch_no: '',
@@ -45,8 +47,8 @@ const extractPagination = (response) => {
       last_page: lastPage,
       per_page: perPage,
       total,
-      from: total ? (currentPage - 1) * perPage + 1 : null,
-      to: total ? Math.min(currentPage * perPage, total) : null,
+      from: meta.from ?? (total ? (currentPage - 1) * perPage + 1 : null),
+      to: meta.to ?? (total ? Math.min(currentPage * perPage, total) : null),
     };
   }
 
@@ -69,7 +71,7 @@ const useDebouncedValue = (value, delay = 350) => {
   const [debounced, setDebounced] = useState(value);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
+    const timer = setTimeout(() => setDebounced(value, delay));
     return () => clearTimeout(timer);
   }, [value, delay]);
 
@@ -113,6 +115,9 @@ export default function AdminInventoryPage() {
   const [inventoryPage, setInventoryPage] = useState(1);
   const [historyPage, setHistoryPage] = useState(1);
 
+  const [pageSize, setPageSize] = useState(5);
+  const [historyPageSize, setHistoryPageSize] = useState(10);
+
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
 
@@ -149,7 +154,7 @@ export default function AdminInventoryPage() {
     try {
       const productsRes = await productService.list({
         store_id: storeId,
-        per_page: 10,
+        per_page: 100,
       });
 
       if (requestId !== productsRequestRef.current) return;
@@ -166,7 +171,7 @@ export default function AdminInventoryPage() {
   }, [storeId]);
 
   const loadInventory = useCallback(
-    async (targetPage = inventoryPage, keyword = debouncedSearch) => {
+    async (targetPage = inventoryPage, keyword = debouncedSearch, targetPageSize = pageSize) => {
       if (!storeId) {
         setRows([]);
         setInventoryPagination(emptyPagination);
@@ -180,7 +185,7 @@ export default function AdminInventoryPage() {
         const inventoryRes = await inventoryService.list({
           store_id: storeId,
           page: targetPage,
-          per_page: 10,
+          per_page: targetPageSize,
           ...(keyword ? { search: keyword } : {}),
         });
 
@@ -201,11 +206,15 @@ export default function AdminInventoryPage() {
         }
       }
     },
-    [storeId, inventoryPage, debouncedSearch]
+    [storeId, inventoryPage, debouncedSearch, pageSize]
   );
 
   const loadHistory = useCallback(
-    async (targetPage = historyPage, keyword = debouncedSearch) => {
+    async (
+      targetPage = historyPage,
+      keyword = debouncedSearch,
+      targetPageSize = historyPageSize
+    ) => {
       if (!storeId) {
         setHistoryRows([]);
         setHistoryPagination(emptyPagination);
@@ -219,7 +228,7 @@ export default function AdminInventoryPage() {
         const historyRes = await inventoryService.history({
           store_id: storeId,
           page: targetPage,
-          per_page: 10,
+          per_page: targetPageSize,
           ...(keyword ? { search: keyword } : {}),
         });
 
@@ -242,7 +251,7 @@ export default function AdminInventoryPage() {
         }
       }
     },
-    [storeId, historyPage, debouncedSearch]
+    [storeId, historyPage, debouncedSearch, historyPageSize]
   );
 
   useEffect(() => {
@@ -253,6 +262,8 @@ export default function AdminInventoryPage() {
     setHistoryPagination(emptyPagination);
     setInventoryPage(1);
     setHistoryPage(1);
+    setPageSize(5);
+    setHistoryPageSize(10);
     setSearch('');
     setShowModal(false);
     resetForm();
@@ -269,13 +280,13 @@ export default function AdminInventoryPage() {
 
   useEffect(() => {
     if (!storeId) return;
-    loadInventory(inventoryPage, debouncedSearch);
-  }, [storeId, inventoryPage, debouncedSearch, loadInventory]);
+    loadInventory(inventoryPage, debouncedSearch, pageSize);
+  }, [storeId, inventoryPage, debouncedSearch, pageSize, loadInventory]);
 
   useEffect(() => {
     if (!storeId) return;
-    loadHistory(historyPage, debouncedSearch);
-  }, [storeId, historyPage, debouncedSearch, loadHistory]);
+    loadHistory(historyPage, debouncedSearch, historyPageSize);
+  }, [storeId, historyPage, debouncedSearch, historyPageSize, loadHistory]);
 
   const lowStockCount = useMemo(
     () => rows.filter((row) => getInventoryStatus(row).tone === 'low').length,
@@ -323,8 +334,8 @@ export default function AdminInventoryPage() {
       setHistoryPage(nextHistoryPage);
 
       await Promise.all([
-        loadInventory(nextInventoryPage, debouncedSearch),
-        loadHistory(nextHistoryPage, debouncedSearch),
+        loadInventory(nextInventoryPage, debouncedSearch, pageSize),
+        loadHistory(nextHistoryPage, debouncedSearch, historyPageSize),
       ]);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to save inventory.');
@@ -358,7 +369,7 @@ export default function AdminInventoryPage() {
           : inventoryPagination.current_page;
 
       setInventoryPage(nextPage);
-      await loadInventory(nextPage, debouncedSearch);
+      await loadInventory(nextPage, debouncedSearch, pageSize);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to delete inventory.');
     }
@@ -422,6 +433,25 @@ export default function AdminInventoryPage() {
               }}
               disabled={!storeId}
             />
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="muted">Show</span>
+            <select
+              className="select-input"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setInventoryPage(1);
+              }}
+              disabled={!storeId}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
@@ -529,7 +559,7 @@ export default function AdminInventoryPage() {
                   onClick={() =>
                     setInventoryPage(Math.max(inventoryPagination.current_page - 1, 1))
                   }
-                  disabled={loading || inventoryPagination.current_page <= 1}
+                  disabled={loading || !inventoryPagination.current_page || inventoryPagination.current_page <= 1}
                 >
                   Previous
                 </button>
@@ -547,6 +577,7 @@ export default function AdminInventoryPage() {
                   }
                   disabled={
                     loading ||
+                    !inventoryPagination.last_page ||
                     inventoryPagination.current_page >= inventoryPagination.last_page
                   }
                 >
@@ -558,13 +589,43 @@ export default function AdminInventoryPage() {
         </article>
 
         <article className="catalog-table-card">
-          <div className="catalog-hero-copy" style={{ marginBottom: 12 }}>
-            <h3 className="catalog-title" style={{ fontSize: '1.05rem' }}>
-              Inventory history
-            </h3>
-            <p className="catalog-subtitle">
-              {historyLoading && historyRows.length ? 'Refreshing history...' : ''}
-            </p>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 12,
+              marginBottom: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div className="catalog-hero-copy">
+              <h3 className="catalog-title" style={{ fontSize: '1.05rem' }}>
+                Inventory history
+              </h3>
+              <p className="catalog-subtitle">
+                {historyLoading && historyRows.length ? 'Refreshing history...' : ''}
+              </p>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="muted">Show</span>
+              <select
+                className="select-input"
+                value={historyPageSize}
+                onChange={(e) => {
+                  setHistoryPageSize(Number(e.target.value));
+                  setHistoryPage(1);
+                }}
+                disabled={!storeId}
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="table-wrap">
@@ -658,7 +719,11 @@ export default function AdminInventoryPage() {
                   onClick={() =>
                     setHistoryPage(Math.max(historyPagination.current_page - 1, 1))
                   }
-                  disabled={historyLoading || historyPagination.current_page <= 1}
+                  disabled={
+                    historyLoading ||
+                    !historyPagination.current_page ||
+                    historyPagination.current_page <= 1
+                  }
                 >
                   Previous
                 </button>
@@ -672,7 +737,9 @@ export default function AdminInventoryPage() {
                     )
                   }
                   disabled={
-                    historyLoading || historyPagination.current_page >= historyPagination.last_page
+                    historyLoading ||
+                    !historyPagination.last_page ||
+                    historyPagination.current_page >= historyPagination.last_page
                   }
                 >
                   Next

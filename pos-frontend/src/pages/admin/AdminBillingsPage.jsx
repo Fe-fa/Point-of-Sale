@@ -6,51 +6,55 @@ import { currency, formatDateTime } from '../../utils/helpers';
 import { mergeStoreSettings } from '../../utils/storeSettings';
 import { openBillingPrint, downloadBillingDocument } from '../../utils/print';
 
-const emptyPagination = {
-  data: [],
+const PAGE_SIZE_OPTIONS = [5, 10, 20, 50, 100];
+
+const EMPTY_META = {
   current_page: 1,
   last_page: 1,
-  per_page: 10,
+  per_page: 5, // Default fallback matching your backend fallback configuration
   total: 0,
   from: null,
   to: null,
+  has_next_page: false,
+  has_prev_page: false,
 };
 
-const extractPagination = (response) => {
+const extractPaginated = (response, defaultLimit = 5) => {
   const payload = response?.data ?? response ?? {};
 
-  if (Array.isArray(payload?.data)) {
-    const meta = payload?.meta ?? {};
-    const currentPage = Number(meta.current_page ?? 1);
-    const perPage = Number(meta.per_page ?? payload.data.length ?? 10);
-    const total = Number(meta.total ?? payload.data.length ?? 0);
-    const lastPage =
-      Number(meta.last_page ?? Math.max(1, Math.ceil(total / Math.max(perPage, 1)))) || 1;
+  let items = [];
+  if (Array.isArray(payload.data)) {
+    items = payload.data;
+  } else if (Array.isArray(payload)) {
+    items = payload;
+  }
+  const rawMeta = payload.meta ?? response?.meta ?? {};
+  const total = Number(rawMeta.total ?? payload.total ?? items.length ?? 0);
+  const currentPage = Number(rawMeta.current_page ?? payload.current_page ?? 1);
+  const perPage = Number(rawMeta.per_page ?? payload.per_page ?? defaultLimit);
+  const lastPage = Number(rawMeta.last_page ?? payload.last_page ?? Math.max(1, Math.ceil(total / perPage)));
 
-    return {
-      data: payload.data,
+  const hasNextPage = typeof rawMeta.has_next_page === 'boolean' 
+    ? rawMeta.has_next_page 
+    : currentPage < lastPage;
+
+  const hasPrevPage = typeof rawMeta.has_prev_page === 'boolean' 
+    ? rawMeta.has_prev_page 
+    : currentPage > 1;
+
+  return {
+    data: items,
+    meta: {
       current_page: currentPage,
       last_page: lastPage,
       per_page: perPage,
       total,
-      from: total ? (currentPage - 1) * perPage + 1 : null,
-      to: total ? Math.min(currentPage * perPage, total) : null,
-    };
-  }
-
-  if (Array.isArray(payload)) {
-    return {
-      data: payload,
-      current_page: 1,
-      last_page: 1,
-      per_page: payload.length,
-      total: payload.length,
-      from: payload.length ? 1 : null,
-      to: payload.length || null,
-    };
-  }
-
-  return emptyPagination;
+      from: rawMeta.from ?? payload.from ?? (total ? (currentPage - 1) * perPage + 1 : null),
+      to: rawMeta.to ?? payload.to ?? (total ? Math.min(currentPage * perPage, total) : null),
+      has_next_page: hasNextPage,
+      has_prev_page: hasPrevPage,
+    },
+  };
 };
 
 const extractRecord = (response) => {
@@ -75,11 +79,19 @@ export default function AdminBillingsPage() {
   const printSettings = mergeStoreSettings(currentStore);
 
   const [billings, setBillings] = useState([]);
-  const [pagination, setPagination] = useState(emptyPagination);
+  const [meta, setMeta] = useState(EMPTY_META);
   const [page, setPage] = useState(1);
+  
+  // 🌟 Kept state to keep UI synchronized with backend layout controls
+  const [perPage, setPerPage] = useState(5); 
+  
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [scope, setScope] = useState('active');
+  
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
   const [selectedBilling, setSelectedBilling] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -87,11 +99,21 @@ export default function AdminBillingsPage() {
 
   const requestRef = useRef(0);
 
+  // Handle debouncing for search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400); // 400ms is standard response latency for inputs
+
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Pulls records safely matching structural filter mutations
   const loadBillings = useCallback(
-    async (targetPage = page) => {
+    async (targetPage, currentPerPage = perPage, currentStatus = status, currentScope = scope, currentSearch = debouncedSearch) => {
       if (!storeId) {
         setBillings([]);
-        setPagination(emptyPagination);
+        setMeta(EMPTY_META);
         setLoading(false);
         return;
       }
@@ -103,21 +125,25 @@ export default function AdminBillingsPage() {
       try {
         const params = {
           page: targetPage,
-          per_page: 10,
           store_id: storeId,
+          per_page: currentPerPage, // Send customized page limits upstream
         };
 
-        if (status && status !== 'draft') {
-          params.status = status;
+        if (currentSearch.trim()) {
+          params.search = currentSearch.trim();
         }
 
-        if (status === 'draft') {
+        if (currentStatus && currentStatus !== 'draft') {
+          params.status = currentStatus;
+        }
+
+        if (currentStatus === 'draft') {
           params.is_draft = true;
         }
 
-        if (scope === 'trashed') {
+        if (currentScope === 'trashed') {
           params.only_trashed = true;
-        } else if (scope === 'all') {
+        } else if (currentScope === 'all') {
           params.with_trashed = true;
         }
 
@@ -125,38 +151,35 @@ export default function AdminBillingsPage() {
 
         if (requestId !== requestRef.current) return;
 
-        const parsed = extractPagination(response);
-        setPagination(parsed);
+        // Extract metadata cleanly using dynamic backend layout parameters
+        const parsed = extractPaginated(response, currentPerPage); 
+        
+        setMeta(parsed.meta);
+        setPerPage(parsed.meta.per_page); // State sync successfully happens outside the effect cycle dependency now!
         setBillings(parsed.data || []);
       } catch (err) {
         if (requestId !== requestRef.current) return;
 
         setError(err?.response?.data?.message || 'Unable to load billing records.');
         setBillings([]);
-        setPagination(emptyPagination);
+        setMeta(EMPTY_META);
       } finally {
         if (requestId === requestRef.current) {
           setLoading(false);
         }
       }
     },
-    [page, scope, status, storeId]
+    [storeId]
   );
 
+  // Synchronized effect driving updates dynamically across all state boundaries
   useEffect(() => {
     setSelectedBilling(null);
     setError('');
     setSuccess('');
 
-    if (!storeId) {
-      setBillings([]);
-      setPagination(emptyPagination);
-      setLoading(false);
-      return;
-    }
-
-    loadBillings(page);
-  }, [storeId, status, scope, page, loadBillings]);
+    loadBillings(page, perPage, status, scope, debouncedSearch);
+  }, [storeId, status, scope, page, perPage, debouncedSearch, loadBillings]);
 
   useEffect(() => {
     if (!success) return;
@@ -170,15 +193,11 @@ export default function AdminBillingsPage() {
 
   const openDetails = async (billingId) => {
     setError('');
-
     try {
       const response = await billingService.show(billingId);
       setSelectedBilling(extractRecord(response));
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          'Unable to load billing detail. If this billing is trashed, ensure the backend show endpoint supports soft-deleted records.'
-      );
+      setError(err?.response?.data?.message || 'Unable to load billing detail.');
     }
   };
 
@@ -195,10 +214,8 @@ export default function AdminBillingsPage() {
         await billingService.destroy(billing.billing_id);
       } else if (typeof billingService.delete === 'function') {
         await billingService.delete(billing.billing_id);
-      } else if (typeof billingService.remove === 'function') {
-        await billingService.remove(billing.billing_id);
       } else {
-        throw new Error('Delete billing method is not implemented in billingService.');
+        throw new Error('Delete method not verified.');
       }
 
       if (String(selectedBilling?.billing_id) === String(billing.billing_id)) {
@@ -206,10 +223,7 @@ export default function AdminBillingsPage() {
       }
 
       setSuccess('Billing moved to trash successfully.');
-
-      const nextPage = billings.length === 1 && page > 1 ? page - 1 : page;
-      setPage(nextPage);
-      await loadBillings(nextPage);
+      setPage(billings.length === 1 && page > 1 ? page - 1 : page);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to delete billing.');
     } finally {
@@ -227,7 +241,7 @@ export default function AdminBillingsPage() {
 
     try {
       if (typeof billingService.restore !== 'function') {
-        throw new Error('Restore billing method is not implemented in billingService.');
+        throw new Error('Restore method not found.');
       }
 
       await billingService.restore(billingId);
@@ -237,10 +251,7 @@ export default function AdminBillingsPage() {
       }
 
       setSuccess('Billing restored successfully.');
-
-      const nextPage = billings.length === 1 && page > 1 ? page - 1 : page;
-      setPage(nextPage);
-      await loadBillings(nextPage);
+      setPage(billings.length === 1 && page > 1 ? page - 1 : page);
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || 'Unable to restore billing.');
     } finally {
@@ -252,11 +263,9 @@ export default function AdminBillingsPage() {
     if (billing?.deleted_at) {
       return <span className="status-badge danger">trashed</span>;
     }
-
     if (billing?.is_draft) {
       return <span className="status-badge warning">draft</span>;
     }
-
     return <span className={`status-badge ${billing.status}`}>{billing.status}</span>;
   };
 
@@ -274,6 +283,45 @@ export default function AdminBillingsPage() {
         </div>
 
         <div className="row-actions compact" style={{ flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', display: 'inline-block' }}>
+            <input
+              type="text"
+              className="text-input slim search-filter-input"
+              style={{ paddingRight: search ? '24px' : '8px', minWidth: '220px' }}
+              placeholder="Search reference or customer..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              disabled={!storeId}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setPage(1);
+                }}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#999',
+                  padding: 0,
+                  fontSize: '14px'
+                }}
+                title="Clear filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
           <select
             className="select-input slim"
             value={status}
@@ -304,6 +352,25 @@ export default function AdminBillingsPage() {
             <option value="all">All records</option>
           </select>
 
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="muted">Show</span>
+            <select
+              className="select-input slim"
+              value={perPage}
+              onChange={(e) => {
+                setPerPage(Number(e.target.value));
+                setPage(1);
+              }}
+              disabled={!storeId}
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div className="inventory-store-pill">Store ID: {storeId || '-'}</div>
         </div>
       </div>
@@ -313,8 +380,8 @@ export default function AdminBillingsPage() {
           <div>
             <h3>Billing records</h3>
             <p>
-              {pagination.from && pagination.to
-                ? `Showing ${pagination.from}-${pagination.to} of ${pagination.total}`
+              {meta.from && meta.to
+                ? `Showing ${meta.from}-${meta.to} of ${meta.total}`
                 : `${billings.length} items`}
               {loading && billings.length ? ' • refreshing...' : ''}
             </p>
@@ -416,15 +483,15 @@ export default function AdminBillingsPage() {
             style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}
           >
             <span className="muted">
-              Page {pagination.current_page} of {pagination.last_page}
+              Page {meta.current_page} of {meta.last_page} (Items per page: {perPage})
             </span>
 
             <div className="row-actions compact">
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => setPage(Math.max(pagination.current_page - 1, 1))}
-                disabled={loading || pagination.current_page <= 1}
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={loading || !meta.has_prev_page}
               >
                 Previous
               </button>
@@ -432,10 +499,8 @@ export default function AdminBillingsPage() {
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() =>
-                  setPage(Math.min(pagination.current_page + 1, pagination.last_page))
-                }
-                disabled={loading || pagination.current_page >= pagination.last_page}
+                onClick={() => setPage((p) => Math.min(p + 1, meta.last_page))}
+                disabled={loading || !meta.has_next_page}
               >
                 Next
               </button>

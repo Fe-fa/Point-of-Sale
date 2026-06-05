@@ -3018,8 +3018,6 @@ textarea:focus {
     position: static;
   }
 }
-
-/* ===================== Sidebar Collapse ===================== */
 @media (max-width: 1080px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -3030,8 +3028,6 @@ textarea:focus {
     border-bottom: 1px solid var(--line);
   }
 }
-
-/* ===================== Tablet ===================== */
 @media (max-width: 920px) {
   .topbar,
   .cashier-topbar {
