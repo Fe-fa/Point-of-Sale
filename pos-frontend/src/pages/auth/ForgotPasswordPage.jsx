@@ -28,15 +28,13 @@ export default function ForgotPasswordPage() {
     <div className="auth-shell">
       <div className="auth-card">
         <div>
-          <span className="eyebrow">SwiftPOS</span>
-          <h1>Forgot password</h1>
-          <p>Enter the email address attached to your SwiftPOS account.</p>
+          <h1>Reset Password</h1>
+          <p>Enter your email and we'll send you reset instructions</p>
         </div>
-
         <form className="form-grid" onSubmit={handleSubmit}>
           <label>
-            Email address
-            <input className="text-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <span className="field-label">Email<span className="required-mark">*</span></span>
+            <input className="text-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email" required />
           </label>
           {error ? <p className="form-error">{error}</p> : null}
           {success ? <p className="form-success">{success}</p> : null}

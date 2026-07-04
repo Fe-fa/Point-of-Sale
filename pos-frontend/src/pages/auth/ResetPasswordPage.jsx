@@ -38,27 +38,26 @@ export default function ResetPasswordPage() {
     <div className="auth-shell">
       <div className="auth-card auth-card-wide">
         <div>
-          <span className="eyebrow">SwiftPOS</span>
           <h1>Reset password</h1>
-          <p>Set a new password using the email and token from the reset message.</p>
+          <p>Set a new password.</p>
         </div>
 
         <form className="form-grid two-columns" onSubmit={handleSubmit}>
-          <label>
-            Email address
-            <input className="text-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
+          <label> 
+            <span className="field-label">Email<span className="required-mark">*</span></span>
+            <input className="text-input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Enter your email" required />
           </label>
-          <label>
+          {/* <label>
             Reset token
             <input className="text-input" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} required />
+          </label> */}
+          <label>
+            <span className="field-label">New password<span className="required-mark">*</span></span>
+            <input className="text-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Enter your new password" required />
           </label>
           <label>
-            New password
-            <input className="text-input" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-          </label>
-          <label>
-            Confirm password
-            <input className="text-input" type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} required />
+            <span className="field-label">Confirm password<span className="required-mark">*</span></span>
+            <input className="text-input" type="password" value={form.password_confirmation} onChange={(e) => setForm({ ...form, password_confirmation: e.target.value })} placeholder="Confirm your new password" required />
           </label>
           {error ? <p className="form-error span-2">{error}</p> : null}
           {success ? <p className="form-success span-2">{success}</p> : null}

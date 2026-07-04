@@ -1,42 +1,98 @@
+
 import axios from 'axios';
 
 export const storageKeys = {
-  token: 'swiftpos_token',
-  user: 'swiftpos_user',
-  storeId: 'swiftpos_store_id',
-  theme: 'swiftpos_theme',
+  token: 'pos_token',
+  user: 'pos_user',
+  storeId: 'pos_store_id',
+  pendingVerification: 'pos_pending_verification',
 };
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
-  headers: {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
-  },
+  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api',
+  headers: { 'Content-Type': 'application/json' },
+  withCredentials: false,
 });
 
+// ── Request: attach Bearer token ──────────────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(storageKeys.token);
-  const storeId = localStorage.getItem(storageKeys.storeId);
-
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-
-  if (storeId) {
-    config.headers['X-Store-Id'] = storeId;
-  }
-
-  // --- THE FIX ---
-  // If we are sending FormData (file uploads), remove the default JSON Content-Type.
-  // This allows Axios/the browser to auto-detect and set the correct multi-part boundary.
-  if (config.data instanceof FormData) {
-    delete config.headers['Content-Type'];
-  }
-
   return config;
-}, (error) => {
-  return Promise.reject(error);
 });
+
+// ── Response: handle 401 with one silent-refresh attempt ──────
+let isRefreshing = false;
+let failedQueue = [];
+
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    const is401 = error?.response?.status === 401;
+    // Skip the refresh loop for auth endpoints themselves
+    const isAuthEndpoint =
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/logout');
+
+    if (is401 && !isAuthEndpoint && !originalRequest._retry) {
+      if (isRefreshing) {
+        // Queue this request until the refresh resolves
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return api(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshResp = await api.post('/auth/refresh');
+        const newToken = refreshResp.data?.access_token;
+
+        if (newToken) {
+          localStorage.setItem(storageKeys.token, newToken);
+          api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+          processQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        processQueue(refreshError, null);
+        // Refresh failed — fire logout event so AuthContext can clear state
+        localStorage.removeItem(storageKeys.token);
+        localStorage.removeItem(storageKeys.user);
+        localStorage.removeItem(storageKeys.storeId);
+        localStorage.removeItem(storageKeys.pendingVerification);
+        window.dispatchEvent(new Event('auth:logout'));
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default api;

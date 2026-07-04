@@ -7,12 +7,13 @@ import AdminBillingsPage from '../pages/admin/AdminBillingsPage';
 import AdminCategoriesPage from '../pages/admin/AdminCategoriesPage';
 import AdminCustomersPage from '../pages/admin/AdminCustomersPage';
 import AdminDashboardPage from '../pages/admin/AdminDashboardPage';
-import AdminInventoryPage from '../pages/admin/AdminInventoryPage';
+import AdminInventoryPage from '../pages/admin/Inventory/AdminInventoryPage';
 import AdminOrdersPage from '../pages/admin/AdminOrdersPage';
 import AdminProductsPage from '../pages/admin/AdminProductsPage';
 import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
 import AdminStoresPage from '../pages/admin/AdminStoresPage';
 import AdminUsersPage from '../pages/admin/AdminUsersPage';
+import AdminGrnPage from '../pages/admin/AdminGrnPage';
 import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import LoginPage from '../pages/auth/LoginPage';
 import PendingApprovalPage from '../pages/auth/PendingApprovalPage';
@@ -22,11 +23,19 @@ import CashierPosPage from '../pages/cashier/CashierPosPage';
 import { getUserHomePath } from '../utils/helpers';
 import AdminAccessControlPage from '../pages/admin/AdminAccessControlPage';
 import AdminCashiersPage from '../pages/admin/AdminCashiersPage';
-
+import ManagerDashboardPage from '../pages/admin/ManagerDashboardPage';
+import { ROUTE_PERMISSIONS } from '../config/routePermissions';
+import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
+import VerifyEmailPage from '../pages/auth/VerifyEmailPage';
 
 function RootRedirect() {
   const { user } = useAuth();
   return <Navigate to={getUserHomePath(user)} replace />;
+}
+
+function AdminIndexRedirect() {
+  const { user } = useAuth();
+  return <Navigate to={user?.role === 'admin' ? 'dashboard' : 'manager'} replace />;
 }
 
 export default function AppRouter() {
@@ -37,6 +46,7 @@ export default function AppRouter() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/verify-email" element={<VerifyEmailPage />} />
 
       <Route element={<ProtectedRoute allowedRoles={['cashier']} />}>
         <Route path="/pending-approval" element={<PendingApprovalPage />} />
@@ -44,30 +54,136 @@ export default function AppRouter() {
 
       <Route element={<ProtectedRoute allowedRoles={['admin', 'manager']} />}>
         <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route index element={<AdminIndexRedirect />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />
-          <Route path="categories" element={<AdminCategoriesPage />} />
-          <Route path="customers" element={<AdminCustomersPage />} />
-          <Route path="products" element={<AdminProductsPage />} />
-          <Route path="inventory" element={<AdminInventoryPage />} />
-          <Route path="billings" element={<AdminBillingsPage />} />
-          <Route path="orders" element={<AdminOrdersPage />} />
-          <Route path="users" element={<AdminUsersPage />} />
-          <Route path="/admin/cashiers" element={<AdminCashiersPage />} />
-          <Route path="settings" element={<AdminSettingsPage />} />
-          <Route path="stores" element={<AdminStoresPage />} />
-          <Route path="access-control" element={<AdminAccessControlPage />} />
+          <Route path="manager" element={<ManagerDashboardPage />} />
+          <Route path="payments" element={<AdminPaymentsPage />} />
+
+          <Route
+            path="billings"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/billings']}>
+                <AdminBillingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="categories"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/categories']}>
+                <AdminCategoriesPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="customers"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/customers']}>
+                <AdminCustomersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="products"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/products']}>
+                <AdminProductsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="inventory"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/inventory']}>
+                <AdminInventoryPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="orders"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/orders']}>
+                <AdminOrdersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="grn"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/grn']}>
+                <AdminGrnPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="users"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/users']}>
+                <AdminUsersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="cashiers"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/cashiers']}>
+                <AdminCashiersPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/settings']}>
+                <AdminSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="stores"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/stores']}>
+                <AdminStoresPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="access-control"
+            element={
+              <ProtectedRoute requirePermission={ROUTE_PERMISSIONS['/admin/access-control']}>
+                <AdminAccessControlPage />
+              </ProtectedRoute>
+            }
+          />
         </Route>
       </Route>
 
-      <Route element={<ProtectedRoute allowedRoles={['cashier', 'admin', 'manager']} requireStoreAssignment />}>
+      <Route
+        element={
+          <ProtectedRoute
+            allowedRoles={['cashier', 'admin', 'manager']}
+            requireStoreAssignment
+          />
+        }
+      >
         <Route path="/cashier" element={<CashierLayout />}>
           <Route index element={<Navigate to="pos" replace />} />
           <Route path="pos" element={<CashierPosPage />} />
         </Route>
       </Route>
 
-      <Route path="*" element={<RootRedirect />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

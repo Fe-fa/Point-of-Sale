@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Concerns\AuthorizesPermission;
 use App\Http\Requests\BillingItem\StoreBillingItemRequest;
 use App\Http\Requests\BillingItem\UpdateBillingItemRequest;
 use App\Models\Billing;
@@ -14,6 +15,8 @@ use Illuminate\Http\Request;
 
 class BillingItemController extends Controller
 {
+    use AuthorizesPermission;
+
     public function __construct(
         private readonly BillingItemService $service,
         private readonly AuditLogService $auditLogService
@@ -21,18 +24,19 @@ class BillingItemController extends Controller
 
     public function index(Request $request, Billing $billing): JsonResponse
     {
-        $perPage = max(1, min((int) $request->get('per_page', 10), 100));
+        if ($error = $this->authorizePermission('billings.view')) return $error;
+
+        $perPage = max(1, min((int) $request->get('per_page', 10), 50));
 
         $query = $billing->items()
             ->with('product.category');
-            
+
         if ($request->boolean('only_trashed')) {
             $query->onlyTrashed();
         } elseif ($request->boolean('with_trashed')) {
             $query->withTrashed();
         }
 
-        // Search modifier template logic
         $query->when($request->search, function ($q, $search) {
             $search = trim($search);
             $q->whereHas('product', function ($sub) use ($search) {
@@ -45,14 +49,13 @@ class BillingItemController extends Controller
 
         $billingItems = $query->paginate($perPage);
 
-        // Retain tracking log features within the application layer
         $this->auditLogService->log(
             'billing_item.view',
             $billing,
             null,
             null,
             [
-                'items_count' => count($billingItems->items()),
+                'items_count'  => count($billingItems->items()),
                 'with_trashed' => $request->boolean('with_trashed'),
                 'only_trashed' => $request->boolean('only_trashed'),
             ],
@@ -72,34 +75,42 @@ class BillingItemController extends Controller
 
     public function store(StoreBillingItemRequest $request, Billing $billing): JsonResponse
     {
+        if ($error = $this->authorizePermission('billings.manage')) return $error;
+
         return response()->json([
             'message' => 'Billing item created successfully.',
-            'data' => $this->service->addItem($billing, $request->validated()),
+            'data'    => $this->service->addItem($billing, $request->validated()),
         ], 201);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
+        if ($error = $this->authorizePermission('billings.view')) return $error;
+
         $billingItem = BillingItem::withTrashed()
             ->with(['product.category', 'billing'])
             ->findOrFail($id);
 
         return response()->json([
             'message' => 'Billing item retrieved successfully.',
-            'data' => $billingItem,
+            'data'    => $billingItem,
         ]);
     }
 
     public function update(UpdateBillingItemRequest $request, BillingItem $billingItem): JsonResponse
     {
+        if ($error = $this->authorizePermission('billings.manage')) return $error;
+
         return response()->json([
             'message' => 'Billing item updated successfully.',
-            'data' => $this->service->updateItem($billingItem, $request->validated()),
+            'data'    => $this->service->updateItem($billingItem, $request->validated()),
         ]);
     }
 
-    public function destroy(BillingItem $billingItem): JsonResponse
+    public function destroy(Request $request, BillingItem $billingItem): JsonResponse
     {
+        if ($error = $this->authorizePermission('billings.manage')) return $error;
+
         $this->service->deleteItem($billingItem);
 
         return response()->json([
@@ -107,13 +118,15 @@ class BillingItemController extends Controller
         ]);
     }
 
-    public function restore(int $id): JsonResponse
+    public function restore(Request $request, int $id): JsonResponse
     {
+        if ($error = $this->authorizePermission('billings.manage')) return $error;
+
         $billingItem = BillingItem::withTrashed()->findOrFail($id);
 
         return response()->json([
             'message' => 'Billing item restored successfully.',
-            'data' => $this->service->restoreItem($billingItem),
+            'data'    => $this->service->restoreItem($billingItem),
         ]);
     }
 }

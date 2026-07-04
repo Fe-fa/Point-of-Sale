@@ -1,27 +1,55 @@
 import api from '../lib/api';
 
 export const inventoryService = {
-  list(params = {}) {
-    return api.get('/inventory', { params }).then((res) => res.data);
+  async list(params = {}, config = {}) {
+    const response = await api.get('/inventory', {
+      params,
+      signal: config.signal,
+    });
+    return response.data;
   },
 
-  history(params = {}) {
-    return api.get('/inventory/history', { params }).then((res) => res.data);
+  async history(params = {}, config = {}) {
+    const response = await api.get('/inventory/history', {
+      params,
+      signal: config.signal,
+    });
+    return response.data;
   },
 
-  show(inventoryId) {
-    return api.get(`/inventory/${inventoryId}`).then((res) => res.data);
+  async show(inventoryId, config = {}) {
+    const response = await api.get(`/inventory/${inventoryId}`, {
+      signal: config.signal,
+    });
+    return response.data;
   },
 
-  create(payload) {
-    return api.post('/inventory', payload).then((res) => res.data);
+  async create(payload, config = {}) {
+    const response = await api.post('/inventory', payload, {
+      signal: config.signal,
+    });
+    return response.data;
   },
 
-  update(inventoryId, payload) {
-    return api.put(`/inventory/${inventoryId}`, payload).then((res) => res.data);
+  async update(inventoryId, payload, config = {}) {
+    const response = await api.put(`/inventory/${inventoryId}`, payload, {
+      signal: config.signal,
+    });
+    return response.data;
   },
 
-  remove(inventoryId) {
-    return api.delete(`/inventory/${inventoryId}`).then((res) => res.data);
+  // ── NEW: signed delta adjustment — hits its own endpoint with its own validation ──
+  async adjust(inventoryId, payload, config = {}) {
+    const response = await api.patch(`/inventory/${inventoryId}/adjust`, payload, {
+      signal: config.signal,
+    });
+    return response.data;
+  },
+
+  async remove(inventoryId, config = {}) {
+    const response = await api.delete(`/inventory/${inventoryId}`, {
+      signal: config.signal,
+    });
+    return response.data;
   },
 };

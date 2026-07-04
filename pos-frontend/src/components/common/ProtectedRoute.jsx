@@ -7,29 +7,47 @@ function hasRole(user, allowedRoles) {
   return allowedRoles.includes(user?.role);
 }
 
-export default function ProtectedRoute({ allowedRoles = [], requireStoreAssignment = false }) {
-  const { user, loading, isAuthenticated } = useAuth();
+export default function ProtectedRoute({
+  allowedRoles = [],
+  requireStoreAssignment = false,
+  requirePermission = null,
+  children = null,
+}) {
+  const { user, loading, isAuthenticated, can } = useAuth();
   const location = useLocation();
 
-  if (loading) {
-    return <div className="page-loader">Loading workspace...</div>;
-  }
+  // if (loading) {
+  //   return <div className="page-loader">Loading workspace...</div>;
+  // }
 
+  // Not authenticated → always go to login, never home
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  if (user?.role === 'cashier' && !userHasStoreAssignment(user) && location.pathname !== '/pending-approval') {
+  // Cashier without store → pending approval
+  if (
+    user?.role === 'cashier' &&
+    !userHasStoreAssignment(user) &&
+    location.pathname !== '/pending-approval'
+  ) {
     return <Navigate to="/pending-approval" replace />;
   }
 
-  if (requireStoreAssignment && !userHasStoreAssignment(user)) {
+  if (requireStoreAssignment && user?.role !== 'admin' && !userHasStoreAssignment(user)) {
     return <Navigate to="/pending-approval" replace />;
   }
 
-  if (!hasRole(user, allowedRoles)) {
+  // Wrong role → login (security: don't reveal home path)
+  if (allowedRoles.length && !hasRole(user, allowedRoles)) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  // No permission → redirect to their home, not login
+  // They ARE authenticated, just don't have access to this specific page
+  if (requirePermission && user?.role !== 'admin' && !can(requirePermission)) {
     return <Navigate to={getUserHomePath(user)} replace />;
   }
 
-  return <Outlet />;
+  return children ?? <Outlet />;
 }

@@ -26,14 +26,40 @@ class AuthController extends Controller
         ], 201);
     }
 
-    public function login(LoginRequest $request): JsonResponse
+public function login(LoginRequest $request): JsonResponse
+{
+    $result = $this->authService->login($request->validated());
+
+    if (! $result['user']['email_verified']) {
+        return response()->json([
+            'message'              => 'Email not verified.',
+            'requires_verification'=> true,
+            'access_token'         => $result['access_token'],
+            'token_type'           => $result['token_type'],
+            'user'                 => $result['user'],
+        ], 403);
+    }
+
+    return response()->json([
+        'message'      => 'Login successful.',
+        'token_type'   => $result['token_type'],
+        'access_token' => $result['access_token'],
+        'expires_at'   => $result['expires_at'],
+        'refresh_expires_at' => $result['refresh_expires_at'],
+        'user'         => $result['user'],
+    ]);
+}
+
+    public function refresh(Request $request): JsonResponse
     {
-        $result = $this->authService->login($request->validated());
+        $result = $this->authService->refresh($request->user());
 
         return response()->json([
-            'message' => 'Login successful.',
+            'message' => 'Token refreshed.',
             'token_type' => $result['token_type'],
             'access_token' => $result['access_token'],
+            'expires_at' => $result['expires_at'],
+            'refresh_expires_at' => $result['refresh_expires_at'],
             'user' => $result['user'],
         ]);
     }
@@ -58,46 +84,63 @@ class AuthController extends Controller
         return response()->json(['message' => 'Logged out from all devices.']);
     }
 
-    public function verifyEmail(Request $request): JsonResponse
-    {
-        if ($request->user()->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email already verified.']);
-        }
+public function verifyEmail(Request $request): JsonResponse
+{
+    $request->validate(['code' => ['required', 'string', 'digits:6']]);
 
-        $request->user()->markEmailAsVerified();
-        return response()->json(['message' => 'Email verified successfully.']);
+    $this->authService->verifyEmailCode($request->user(), $request->input('code'));
+
+    return response()->json(['message' => 'Email verified successfully.']);
+}
+
+public function resendVerification(Request $request): JsonResponse
+{
+    $this->authService->resendVerificationCode($request->user());
+
+    return response()->json(['message' => 'Verification code sent to your email.']);
+}
+
+public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+{
+    $this->authService->forgotPassword($request->validated('email'));
+
+    return response()->json(['message' => 'Password reset link sent.']);
+}
+
+public function resetPassword(ResetPasswordRequest $request): JsonResponse
+{
+    $this->authService->resetPassword(
+        $request->validated('email'),
+        $request->validated('token'),
+        $request->validated('password'),
+    );
+
+    return response()->json(['message' => 'Password reset successful.']);
+}
+
+    public function sessions(Request $request): JsonResponse
+    {
+        $sessions = $this->authService->getSessions($request->user());
+
+        return response()->json([
+            'message'  => 'Active sessions retrieved.',
+            'sessions' => $sessions,
+        ]);
     }
 
-    public function resendVerification(Request $request): JsonResponse
+    public function revokeSession(Request $request, string $sessionId): JsonResponse
     {
-        if ($request->user()->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email already verified.']);
-        }
+        $revoked = $this->authService->revokeSession($request->user(), $sessionId);
 
-        $request->user()->sendEmailVerificationNotification();
-        return response()->json(['message' => 'Verification email resent.']);
+        return $revoked
+            ? response()->json(['message' => 'Session revoked successfully.'])
+            : response()->json(['message' => 'Session not found.'], 404);
     }
 
-    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    public function revokeAllSessions(Request $request): JsonResponse
     {
-        $status = Password::sendResetLink($request->only('email'));
+        $this->authService->revokeAllSessions($request->user());
 
-        return $status === Password::RESET_LINK_SENT
-            ? response()->json(['message' => 'Password reset link sent.'])
-            : response()->json(['message' => 'Unable to send reset link.'], 400);
-    }
-
-    public function resetPassword(ResetPasswordRequest $request): JsonResponse
-    {
-        $status = Password::reset(
-            $request->only('email', 'password', 'password_confirmation', 'token'),
-            function ($user, $password) {
-                $user->forceFill(['password' => $password])->save();
-            }
-        );
-
-        return $status === Password::PASSWORD_RESET
-            ? response()->json(['message' => 'Password reset successful.'])
-            : response()->json(['message' => 'Password reset failed.'], 400);
+        return response()->json(['message' => 'All sessions revoked.']);
     }
 }

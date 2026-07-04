@@ -23,7 +23,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     protected $table = 'users';
     protected $primaryKey = 'user_id';
-    protected string $guard_name = 'sanctum';
+    protected $guard_name = 'sanctum';
 
     protected $fillable = [
         'first_name',
@@ -39,6 +39,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'shift_end',
         'verification_code',
         'verification_expiry',
+        'password_reset_token',
+        'password_reset_expiry',
         'is_active',
         'is_verified',
         'email_verified_at',
@@ -48,6 +50,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'remember_token',
         'verification_code',
+        'password_reset_token',
     ];
 
     protected $appends = [
@@ -64,10 +67,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'password' => 'hashed',
     ];
 
-    public function getDefaultGuardName(): string
-    {
-        return $this->guard_name;
-    }
+public function getDefaultGuardName(): string
+{
+    return 'sanctum';
+}
 
     public function getRouteKeyName(): string
     {
@@ -130,7 +133,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function getSalesTodayAttribute(): float
     {
-        // If already selected from query, use it directly.
         if (array_key_exists('sales_today', $this->attributes)) {
             return round((float) $this->attributes['sales_today'], 2);
         }
@@ -197,4 +199,8 @@ class User extends Authenticatable implements MustVerifyEmail
             return false;
         }
     }
+    public function sessions(): HasMany
+{
+    return $this->hasMany(Session::class, 'user_id', 'user_id');
+}
 }
